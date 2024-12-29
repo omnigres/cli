@@ -10,6 +10,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/errdefs"
 	"github.com/docker/go-connections/nat"
@@ -171,6 +172,20 @@ checkContainer:
 		}
 	} else {
 
+		networkName := "omnigres"
+
+		_, err = cli.NetworkCreate(ctx, networkName, network.CreateOptions{
+			Driver: "bridge",
+		})
+
+		if err != nil {
+			// If it is a conflict, this is normal flow – network already exists
+			if !errdefs.IsConflict(err) {
+				// otherwise, it's an error
+				return
+			}
+		}
+
 		// Bindings
 		hostconfig := container.HostConfig{
 			PortBindings: nat.PortMap{
@@ -184,6 +199,7 @@ checkContainer:
 					Target: default_directory_mount,
 				},
 			},
+			NetworkMode: container.NetworkMode(networkName),
 		}
 
 		// Prepare environment for every orb
@@ -361,6 +377,54 @@ func (d *DockerOrbCluster) Port(ctx context.Context, name string) (port int, err
 	}
 
 	err = fmt.Errorf("port %s not found", name)
+	return
+}
+
+func (d *DockerOrbCluster) NetworkID(ctx context.Context) (network string, err error) {
+	cli := d.client
+
+	var id string
+	id, err = d.containerId()
+	if err != nil {
+		return
+	}
+
+	var cnt types.ContainerJSON
+	cnt, err = cli.ContainerInspect(ctx, id)
+	if err != nil {
+		return
+	}
+
+	if !cnt.State.Running {
+		err = errors.New("Container is not running")
+		return
+	}
+
+	network = cnt.HostConfig.NetworkMode.NetworkName()
+	return
+}
+
+func (d *DockerOrbCluster) NetworkIP(ctx context.Context) (ip string, err error) {
+	cli := d.client
+
+	var id string
+	id, err = d.containerId()
+	if err != nil {
+		return
+	}
+
+	var cnt types.ContainerJSON
+	cnt, err = cli.ContainerInspect(ctx, id)
+	if err != nil {
+		return
+	}
+
+	if !cnt.State.Running {
+		err = errors.New("Container is not running")
+		return
+	}
+
+	ip = cnt.NetworkSettings.Networks[cnt.HostConfig.NetworkMode.NetworkName()].IPAddress
 	return
 }
 
