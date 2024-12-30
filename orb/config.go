@@ -24,7 +24,7 @@ type ImageConfig struct {
 }
 
 func NewConfig() *Config {
-	return &Config{Image: ImageConfig{Name: "ghcr.io/omnigres/omnigres-slim"}}
+	return &Config{Image: ImageConfig{Name: "ghcr.io/omnigres/omnigres-17"}}
 }
 
 func (c *Config) Save() (err error) {
