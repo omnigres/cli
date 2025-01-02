@@ -19,15 +19,19 @@ import (
 	"github.com/spf13/viper"
 	"golang.org/x/term"
 	"io"
+	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const default_directory_mount = "/mnt/host"
 
 type DockerOrbCluster struct {
-	client *client.Client
+	client             *client.Client
+	currentContainerId string
 	OrbOptions
 }
 
@@ -114,6 +118,178 @@ func (d *DockerOrbCluster) prepareImage(ctx context.Context) (digest string, err
 func (d *DockerOrbCluster) runfile() (v *viper.Viper) {
 	v = viper.New()
 	v.SetConfigFile(d.Path + "/omnigres.run.yaml")
+	return
+}
+
+func (d *DockerOrbCluster) Run(ctx context.Context, listeners ...RunEventListener) (err error) {
+	cli := d.client
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	var imageDigest string
+
+	// Prepare image
+	imageDigest, err = d.prepareImage(ctx)
+	if err != nil {
+		return
+	}
+
+	networkName := "omnigres"
+
+	_, err = cli.NetworkCreate(ctx, networkName, network.CreateOptions{
+		Driver: "bridge",
+	})
+
+	if err != nil {
+		// If it is a conflict, this is normal flow – network already exists
+		if !errdefs.IsConflict(err) {
+			// otherwise, it's an error
+			return
+		}
+	}
+
+	// Bindings
+	hostconfig := container.HostConfig{
+		AutoRemove: true,
+		PortBindings: nat.PortMap{
+			"5432/tcp": []nat.PortBinding{{HostIP: "127.0.0.1"}},
+			"8080/tcp": []nat.PortBinding{{HostIP: "127.0.0.1"}},
+		},
+		Mounts: []mount.Mount{
+			{
+				Type:   mount.TypeBind,
+				Source: d.Path,
+				Target: default_directory_mount,
+			},
+		},
+		NetworkMode: container.NetworkMode(networkName),
+	}
+
+	// Prepare environment for every orb
+	env := make([]string, 0)
+	for _, orb := range d.Config().Orbs {
+		for _, e := range os.Environ() {
+			if strings.HasPrefix(e, strings.ToUpper(orb.Name+"_")) {
+				env = append(env, e)
+			}
+		}
+	}
+
+	// Create container
+	var containerResponse container.CreateResponse
+	containerResponse, err = cli.ContainerCreate(ctx, &container.Config{Image: imageDigest, Env: env}, &hostconfig, nil, nil, "")
+	if err != nil {
+		return
+	}
+
+	var containerId string
+	containerId = containerResponse.ID
+
+	var resp types.HijackedResponse
+	resp, err = cli.ContainerAttach(ctx, containerId, container.AttachOptions{
+		Stream: true,
+		Stdin:  true,
+		Stdout: true,
+		Stderr: true,
+	})
+	if err != nil {
+		fmt.Printf("Error attaching to attach instance: %v\n", err)
+		return
+	}
+	defer resp.Close()
+
+	d.currentContainerId = containerId
+
+	// Connect stdin to the terminal
+	go func() {
+		_, _ = io.Copy(resp.Conn, os.Stdin)
+	}()
+
+	// Connect stdout/stderr to the consumer
+	for _, listener := range listeners {
+		if listener.OutputHandler != nil {
+			listener.OutputHandler(d, resp.Reader)
+		}
+	}
+
+	// Start container
+	err = cli.ContainerStart(ctx, containerId, container.StartOptions{})
+	if err != nil {
+		return err
+	}
+
+	// Ensure we stop the container
+	defer func() {
+		timeout := 0 // forcibly terminate
+		newErr := cli.ContainerStop(ctx, containerId, container.StopOptions{Timeout: &timeout})
+		for _, listener := range listeners {
+			if listener.Stopped != nil {
+				go listener.Stopped(d)
+			}
+		}
+		if newErr != nil {
+			err = newErr
+		}
+	}()
+
+	for _, listener := range listeners {
+		if listener.Started != nil {
+			go listener.Started(d)
+		}
+	}
+	go func() {
+		port, err := d.Port(ctx, "8080/tcp")
+		if err != nil {
+			panic(err)
+		}
+
+		deadline := time.Now().Add(1 * time.Minute)
+
+		for time.Now().Before(deadline) {
+			resp, err := http.Get("http://127.0.0.1:" + strconv.Itoa(port))
+			if err == nil {
+				defer resp.Body.Close()
+				if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+					for time.Now().Before(deadline) {
+						if c, err := d.Connect(ctx); err == nil {
+							_ = c.Close()
+							for _, listener := range listeners {
+								if listener.Ready != nil {
+									go listener.Ready(d)
+								}
+							}
+							return
+						}
+						time.Sleep(1 * time.Second)
+					}
+
+				}
+			}
+			time.Sleep(1 * time.Second)
+		}
+
+		fmt.Println("Can't get a healthy cluster, terminating...")
+		cancel()
+	}()
+
+	statusCh, errCh := cli.ContainerWait(ctx, containerResponse.ID, container.WaitConditionNotRunning)
+	sigCtx, stop := signal.NotifyContext(ctx, os.Interrupt)
+	defer stop()
+
+	select {
+	case <-sigCtx.Done():
+		fmt.Println("Terminating cluster")
+	case err = <-errCh:
+		if err != nil {
+			panic(err)
+		}
+	case status := <-statusCh:
+		if status.StatusCode == 0 {
+			fmt.Printf("Omnigres exited with status: %d\n", status.StatusCode)
+		}
+	}
+
 	return
 }
 
@@ -249,13 +425,17 @@ checkContainer:
 }
 
 func (d *DockerOrbCluster) containerId() (containerId string, err error) {
-	v := d.runfile()
-	err = v.ReadInConfig()
-	if err != nil {
-		return
-	}
+	if d.currentContainerId != "" {
+		containerId = d.currentContainerId
+	} else {
+		v := d.runfile()
+		err = v.ReadInConfig()
+		if err != nil {
+			return
+		}
 
-	containerId = v.GetString("containerid")
+		containerId = v.GetString("containerid")
+	}
 	return
 }
 

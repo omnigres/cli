@@ -41,12 +41,17 @@ func migrate(ctx context.Context, cluster orb.OrbCluster, dbReset bool, orbs []s
 		err = errors.New("orbs and databases have to be of the same size")
 		return
 	}
+	logger := log.New(os.Stderr)
+	logger.SetReportTimestamp(true)
+	logger.Info("Starting migration...")
+
 	var db *sql.DB
 	db, err = cluster.Connect(ctx, "omnigres")
 	if err != nil {
 		return
 	}
 	for i, dbName := range databases {
+		logger.SetPrefix(fmt.Sprintf("[%s] ", dbName))
 		var datname string
 		if databaseName != "" {
 			dbName = databaseName
@@ -77,10 +82,6 @@ func migrate(ctx context.Context, cluster orb.OrbCluster, dbReset bool, orbs []s
 				panic(err)
 			}
 		}
-
-		logger := log.New(os.Stderr)
-		logger.SetReportTimestamp(true)
-		logger.SetPrefix(fmt.Sprintf("[%s] ", dbName))
 
 		levels := make(map[string]log.Level)
 		levels["info"] = log.InfoLevel
@@ -116,9 +117,13 @@ func migrate(ctx context.Context, cluster orb.OrbCluster, dbReset bool, orbs []s
 			return nil
 		})
 
+		orbSource := path.Join(orbs[i], "src")
+		if orbs[i] == "." {
+			orbSource = ""
+		}
 		rows, err := conn.QueryContext(ctx,
 			`select migration_filename, migration_statement, execution_error from omni_schema.assemble_schema($1, omni_vfs.local_fs('/mnt/host'), $2) where execution_error is not null`,
-			fmt.Sprintf("dbname=%s user=omnigres", dbName), path.Join(orbs[i], "src"))
+			fmt.Sprintf("dbname=%s user=omnigres", dbName), orbSource)
 
 		if err != nil {
 			panic(err)

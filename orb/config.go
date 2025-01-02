@@ -63,6 +63,11 @@ func LoadConfig(path string) (cfg *Config, err error) {
 	v.AddConfigPath(path)
 	err = v.ReadInConfig()
 	if err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			cfg = NewConfig()
+			err = nil
+			return
+		}
 		return
 	}
 

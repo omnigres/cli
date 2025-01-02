@@ -33,6 +33,9 @@ func getOrbCluster() (cluster orb.OrbCluster, err error) {
 	}
 	var cfg *orb.Config
 	cfg, err = orb.LoadConfig(orbPath)
+	if err != nil {
+		return
+	}
 	cluster, err = orb.NewDockerOrbCluster()
 	if err != nil {
 		return
