@@ -3,14 +3,18 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"github.com/PuerkitoBio/goquery"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
+	"github.com/charmbracelet/log"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/omnigres/cli/orb"
 	"github.com/spf13/cobra"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 )
 
 var runCmd = &cobra.Command{
@@ -32,6 +36,54 @@ var runCmd = &cobra.Command{
 		}
 		if len(args) == 1 {
 			path := args[0]
+			if ok, _ := regexp.MatchString("https://gist.github.com/(.+)/(.+)", path); ok {
+				response, err := http.Get(path)
+				if err != nil {
+					panic(err)
+				}
+				defer response.Body.Close()
+				if response.StatusCode != 200 {
+					println("status code error: %d %s", response.StatusCode, response.Status)
+					return
+				}
+				doc, err := goquery.NewDocumentFromReader(response.Body)
+				if err != nil {
+					panic(err)
+				}
+				dir, err := os.MkdirTemp("", "omnigres-run")
+				if err != nil {
+					panic(err)
+				}
+				defer os.RemoveAll(dir)
+
+				doc.Find("a").Each(func(i int, s *goquery.Selection) {
+					href, _ := s.Attr("href")
+					if ok, _ := regexp.MatchString("/raw/", href); ok {
+						response, err := http.Get("https://gist.github.com" + href)
+						if err != nil {
+							panic(err)
+						}
+						defer response.Body.Close()
+						if response.StatusCode != 200 {
+							println("status code error: %d %s", response.StatusCode, response.Status)
+							return
+						}
+						filename := filepath.Base(href)
+						file, err := os.Create(filepath.Join(dir, filename))
+						if err != nil {
+							panic(err)
+						}
+						defer file.Close()
+						_, err = io.Copy(file, response.Body)
+
+						if err != nil {
+							log.Fatalf("Failed to copy data to file: %v", err)
+						}
+					}
+				})
+				path = dir
+				databases = []string{"gist"}
+			}
 
 			workspace = path
 			path, err = getOrbPath(false)
@@ -54,7 +106,9 @@ var runCmd = &cobra.Command{
 				return
 			}
 			orbs = []string{"."}
-			databases = []string{filepath.Base(path)}
+			if len(databases) == 0 {
+				databases = []string{filepath.Base(path)}
+			}
 		}
 
 		var cluster orb.OrbCluster
@@ -72,7 +126,6 @@ var runCmd = &cobra.Command{
 			},
 			Ready: func(cluster orb.OrbCluster) {
 
-				fmt.Println("Starting migration...")
 				err := migrate(ctx, cluster, true, orbs, databases)
 
 				if err != nil {

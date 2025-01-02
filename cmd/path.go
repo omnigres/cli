@@ -12,9 +12,12 @@ func getOrbPath(createIfNotExists bool) (path string, err error) {
 	if err != nil {
 		return
 	}
-	path, err = filepath.Abs(filepath.Join(cwd, workspace))
-	if err != nil {
-		return
+	path = workspace
+	if filepath.IsLocal(workspace) {
+		path, err = filepath.Abs(filepath.Join(cwd, workspace))
+		if err != nil {
+			return
+		}
 	}
 	if createIfNotExists {
 		err = fileutils.CreateIfNotExists(path, true)
