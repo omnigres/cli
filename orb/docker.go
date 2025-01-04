@@ -198,11 +198,6 @@ func (d *DockerOrbCluster) Run(ctx context.Context, listeners ...OrbRunEventList
 
 	d.currentContainerId = containerId
 
-	// Connect stdin to the terminal
-	go func() {
-		_, _ = io.Copy(resp.Conn, os.Stdin)
-	}()
-
 	// Connect stdout/stderr to the consumer
 	for _, listener := range listeners {
 		if listener.OutputHandler != nil {
