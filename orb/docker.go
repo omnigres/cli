@@ -643,6 +643,7 @@ nextDatabase:
 		var portRows *sql.Rows
 		portRows, err = dbconn.QueryContext(ctx, "select effective_port from omni_httpd.listeners")
 		if err != nil {
+			err = nil
 			continue nextDatabase
 		}
 		defer portRows.Close()
