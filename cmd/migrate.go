@@ -41,7 +41,7 @@ func migrate(ctx context.Context, cluster orb.OrbCluster, dbReset bool, orbs []s
 		err = errors.New("orbs and databases have to be of the same size")
 		return
 	}
-	logger := log.New(os.Stderr)
+	logger := log.New(os.Stdout)
 	logger.SetReportTimestamp(true)
 	logger.Info("Starting migration...")
 
@@ -128,6 +128,7 @@ func migrate(ctx context.Context, cluster orb.OrbCluster, dbReset bool, orbs []s
 		if err != nil {
 			panic(err)
 		}
+		defer rows.Close()
 
 		for rows.Next() {
 			var migration_filename, migration_statement, execution_error sql.NullString

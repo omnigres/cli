@@ -13,16 +13,16 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/errdefs"
-	"github.com/docker/go-connections/nat"
 	_ "github.com/lib/pq"
 	"github.com/omnigres/cli/internal/fileutils"
+	"github.com/samber/lo"
 	"github.com/spf13/viper"
 	"golang.org/x/term"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -121,7 +121,7 @@ func (d *DockerOrbCluster) runfile() (v *viper.Viper) {
 	return
 }
 
-func (d *DockerOrbCluster) Run(ctx context.Context, listeners ...RunEventListener) (err error) {
+func (d *DockerOrbCluster) Run(ctx context.Context, listeners ...OrbRunEventListener) (err error) {
 	cli := d.client
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -152,10 +152,6 @@ func (d *DockerOrbCluster) Run(ctx context.Context, listeners ...RunEventListene
 	// Bindings
 	hostconfig := container.HostConfig{
 		AutoRemove: true,
-		PortBindings: nat.PortMap{
-			"5432/tcp": []nat.PortBinding{{HostIP: "127.0.0.1"}},
-			"8080/tcp": []nat.PortBinding{{HostIP: "127.0.0.1"}},
-		},
 		Mounts: []mount.Mount{
 			{
 				Type:   mount.TypeBind,
@@ -175,6 +171,7 @@ func (d *DockerOrbCluster) Run(ctx context.Context, listeners ...RunEventListene
 			}
 		}
 	}
+	env = append(env, "POSTGRES_HOST_AUTH_METHOD=password")
 
 	// Create container
 	var containerResponse container.CreateResponse
@@ -238,40 +235,12 @@ func (d *DockerOrbCluster) Run(ctx context.Context, listeners ...RunEventListene
 			go listener.Started(d)
 		}
 	}
-	go func() {
-		port, err := d.Port(ctx, "8080/tcp")
-		if err != nil {
-			panic(err)
+	d.waitUntilClusterIsReady(ctx, lo.Map(listeners, func(listener OrbRunEventListener, index int) OrbStartEventListener {
+		return OrbStartEventListener{
+			Ready:   listener.Ready,
+			Started: listener.Started,
 		}
-
-		deadline := time.Now().Add(1 * time.Minute)
-
-		for time.Now().Before(deadline) {
-			resp, err := http.Get("http://127.0.0.1:" + strconv.Itoa(port))
-			if err == nil {
-				defer resp.Body.Close()
-				if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-					for time.Now().Before(deadline) {
-						if c, err := d.Connect(ctx); err == nil {
-							_ = c.Close()
-							for _, listener := range listeners {
-								if listener.Ready != nil {
-									go listener.Ready(d)
-								}
-							}
-							return
-						}
-						time.Sleep(1 * time.Second)
-					}
-
-				}
-			}
-			time.Sleep(1 * time.Second)
-		}
-
-		fmt.Println("Can't get a healthy cluster, terminating...")
-		cancel()
-	}()
+	}), cancel)
 
 	statusCh, errCh := cli.ContainerWait(ctx, containerResponse.ID, container.WaitConditionNotRunning)
 	sigCtx, stop := signal.NotifyContext(ctx, os.Interrupt)
@@ -293,8 +262,45 @@ func (d *DockerOrbCluster) Run(ctx context.Context, listeners ...RunEventListene
 	return
 }
 
-func (d *DockerOrbCluster) Start(ctx context.Context) (err error) {
+func (d *DockerOrbCluster) waitUntilClusterIsReady(ctx context.Context, listeners []OrbStartEventListener, cancel context.CancelFunc) {
+
+	deadline := time.Now().Add(1 * time.Minute)
+	ip, err := d.NetworkIP(ctx)
+	if err != nil {
+		panic(err)
+	}
+
+	for time.Now().Before(deadline) {
+		resp, err := http.Get("http://" + ip + ":8080")
+		if err == nil {
+			defer resp.Body.Close()
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				for time.Now().Before(deadline) {
+					if c, err := d.Connect(ctx); err == nil {
+						_ = c.Close()
+						for _, listener := range listeners {
+							if listener.Ready != nil {
+								go listener.Ready(d)
+							}
+						}
+						return
+					}
+					time.Sleep(1 * time.Second)
+				}
+
+			}
+		}
+		time.Sleep(1 * time.Second)
+	}
+
+	fmt.Println("Can't get a healthy cluster, terminating...")
+	cancel()
+}
+
+func (d *DockerOrbCluster) Start(ctx context.Context, listeners ...OrbStartEventListener) (err error) {
 	cli := d.client
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	var imageDigest string
 
@@ -364,10 +370,6 @@ checkContainer:
 
 		// Bindings
 		hostconfig := container.HostConfig{
-			PortBindings: nat.PortMap{
-				"5432/tcp": []nat.PortBinding{{HostIP: "127.0.0.1"}},
-				"8080/tcp": []nat.PortBinding{{HostIP: "127.0.0.1"}},
-			},
 			Mounts: []mount.Mount{
 				{
 					Type:   mount.TypeBind,
@@ -387,6 +389,7 @@ checkContainer:
 				}
 			}
 		}
+		env = append(env, "POSTGRES_HOST_AUTH_METHOD=password")
 
 		// Create container
 		var containerResponse container.CreateResponse
@@ -401,6 +404,12 @@ checkContainer:
 	err = cli.ContainerStart(ctx, containerId, container.StartOptions{})
 	if err != nil {
 		return err
+	}
+
+	for _, listener := range listeners {
+		if listener.Started != nil {
+			go listener.Started(d)
+		}
 	}
 
 	// If we fail below, stop the container
@@ -420,6 +429,9 @@ checkContainer:
 	if err != nil {
 		return
 	}
+
+	// TODO: do this in the background?
+	d.waitUntilClusterIsReady(ctx, listeners, cancel)
 
 	return nil
 }
@@ -529,37 +541,6 @@ func (d *DockerOrbCluster) ConnectPsql(ctx context.Context, database ...string) 
 	return
 }
 
-func (d *DockerOrbCluster) Port(ctx context.Context, name string) (port int, err error) {
-	cli := d.client
-
-	var id string
-	id, err = d.containerId()
-	if err != nil {
-		return
-	}
-
-	var cnt types.ContainerJSON
-	cnt, err = cli.ContainerInspect(ctx, id)
-	if err != nil {
-		return
-	}
-
-	if !cnt.State.Running {
-		err = errors.New("Container is not running")
-		return
-	}
-
-	bindings := cnt.NetworkSettings.Ports[nat.Port(name)]
-
-	for _, binding := range bindings {
-		port, err = strconv.Atoi(binding.HostPort)
-		return
-	}
-
-	err = fmt.Errorf("port %s not found", name)
-	return
-}
-
 func (d *DockerOrbCluster) NetworkID(ctx context.Context) (network string, err error) {
 	cli := d.client
 
@@ -615,11 +596,70 @@ func (d *DockerOrbCluster) Connect(ctx context.Context, database ...string) (con
 	} else {
 		db = database[0]
 	}
-	var port int
-	port, err = d.Port(ctx, "5432/tcp")
+	var ip string
+	ip, err = d.NetworkIP(ctx)
 	if err != nil {
 		return
 	}
-	conn, err = sql.Open("postgres", fmt.Sprintf("user=omnigres password=omnigres dbname=%s host=127.0.0.1 port=%d sslmode=disable", db, port))
+	port := 5432
+	conn, err = sql.Open("postgres", fmt.Sprintf("user=omnigres password=omnigres dbname=%s host=%s port=%d sslmode=disable", db, ip, port))
+	return
+}
+
+func (d *DockerOrbCluster) Endpoints(ctx context.Context) (endpoints []Endpoint, err error) {
+	var addr string
+	addr, err = d.NetworkIP(ctx)
+	if err != nil {
+		return
+	}
+	ipaddr := net.ParseIP(addr)
+	endpoints = make([]Endpoint, 0)
+	var conn *sql.DB
+	conn, err = d.Connect(ctx)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+
+	var rows *sql.Rows
+	// Search for all databases
+	rows, err = conn.QueryContext(ctx, `select datname from pg_database where not datistemplate and datname != 'postgres'`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+nextDatabase:
+	for rows.Next() {
+		var datname string
+		if err = rows.Scan(&datname); err != nil {
+			return
+		}
+		// For every database
+		var dbconn *sql.DB
+		dbconn, err = d.Connect(ctx, datname)
+		if err != nil {
+			return
+		}
+		defer dbconn.Close()
+		// Add the Postgres service
+		endpoints = append(endpoints, Endpoint{Database: datname, IP: ipaddr, Port: 5432, Protocol: "Postgres"})
+		// Get the list of HTTP listeners.
+		// TODO: in the future, we expect this to be generialized through omni_service
+		var portRows *sql.Rows
+		portRows, err = dbconn.QueryContext(ctx, "select effective_port from omni_httpd.listeners")
+		if err != nil {
+			continue nextDatabase
+		}
+		defer portRows.Close()
+		for portRows.Next() {
+			var port int
+			err = portRows.Scan(&port)
+			if err != nil {
+				return
+			}
+			endpoints = append(endpoints, Endpoint{Database: datname, IP: ipaddr, Port: port, Protocol: "HTTP"})
+		}
+
+	}
 	return
 }

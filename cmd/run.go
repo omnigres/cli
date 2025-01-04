@@ -120,7 +120,7 @@ var runCmd = &cobra.Command{
 
 		ctx := context.Background()
 
-		err = cluster.Run(ctx, orb.RunEventListener{
+		err = cluster.Run(ctx, orb.OrbRunEventListener{
 			OutputHandler: func(cluster orb.OrbCluster, reader io.Reader) {
 				go func() { _, _ = stdcopy.StdCopy(os.Stdout, os.Stderr, reader) }()
 			},
@@ -132,20 +132,24 @@ var runCmd = &cobra.Command{
 					panic(err)
 				}
 
-				http_port, err := cluster.Port(ctx, "8080/tcp")
 				if err != nil {
 					panic(err)
 				}
-				pg_port, err := cluster.Port(ctx, "5432/tcp")
+
+				var endpoints []orb.Endpoint
+				endpoints, err = cluster.Endpoints(ctx)
 				if err != nil {
 					panic(err)
 				}
 
 				rows := [][]string{
 					{""},
-					{fmt.Sprintf("HTTP: http://127.0.0.1:%d", http_port)},
-					{fmt.Sprintf("Postgres: postgres://omnigres:omnigres@127.0.0.1:%d/omnigres", pg_port)},
 				}
+
+				for _, endpoint := range endpoints {
+					rows = append(rows, []string{fmt.Sprintf("%s (%s): %s", endpoint.Database, endpoint.Protocol, endpoint.String())})
+				}
+
 				t := table.New().
 					Border(lipgloss.RoundedBorder()).
 					BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("99"))).

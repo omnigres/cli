@@ -3,7 +3,9 @@ package orb
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"io"
+	"net"
 )
 
 type OrbOptions struct {
@@ -11,7 +13,12 @@ type OrbOptions struct {
 	Path string
 }
 
-type RunEventListener struct {
+type OrbStartEventListener struct {
+	Started func(cluster OrbCluster)
+	Ready   func(cluster OrbCluster)
+}
+
+type OrbRunEventListener struct {
 	OutputHandler func(cluster OrbCluster, reader io.Reader)
 	Started       func(cluster OrbCluster)
 	Ready         func(cluster OrbCluster)
@@ -20,12 +27,31 @@ type RunEventListener struct {
 
 type OrbCluster interface {
 	Configure(options OrbOptions) error
-	Run(ctx context.Context, listeners ...RunEventListener) error
-	Start(ctx context.Context) error
+	Run(ctx context.Context, listeners ...OrbRunEventListener) error
+	Start(ctx context.Context, listeners ...OrbStartEventListener) error
 	Stop(ctx context.Context) error
+	Endpoints(ctx context.Context) ([]Endpoint, error)
 	Connect(ctx context.Context, database ...string) (*sql.DB, error)
 	ConnectPsql(ctx context.Context, database ...string) error
-	Port(ctx context.Context, name string) (int, error)
 	Close() error
 	Config() *Config
+}
+
+type Endpoint struct {
+	Database string
+	net.IP
+	Port     int
+	Protocol string
+}
+
+func (e *Endpoint) String() (s string) {
+	switch e.Protocol {
+	case "HTTP":
+		s = fmt.Sprintf("http://%s:%d", e.IP.String(), e.Port)
+	case "Postgres":
+		s = fmt.Sprintf("postgres://omnigres:omnigres@%s:%d/%s", e.IP.String(), e.Port, e.Database)
+	default:
+		s = fmt.Sprintf("%s:%d", e.IP.String(), e.Port)
+	}
+	return
 }

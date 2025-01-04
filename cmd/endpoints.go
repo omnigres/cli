@@ -7,9 +7,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var startCmd = &cobra.Command{
-	Use:   "start",
-	Short: "Start cluster",
+var endpointsCmd = &cobra.Command{
+	Use:   "endpoints",
+	Short: "Print cluster endpoints",
 	Run: func(cmd *cobra.Command, args []string) {
 		var cluster orb.OrbCluster
 		var err error
@@ -19,22 +19,6 @@ var startCmd = &cobra.Command{
 		}
 
 		ctx := context.Background()
-
-		readyCh := make(chan orb.OrbCluster, 1)
-		err = cluster.Start(ctx, orb.OrbStartEventListener{Ready: func(cluster orb.OrbCluster) {
-			readyCh <- cluster
-		}})
-		if err != nil {
-			panic(err)
-		}
-		err = cluster.Config().Save()
-		if err != nil {
-			panic(err)
-		}
-
-		<-readyCh
-
-		fmt.Println("Omnigres Orb cluster started.\n")
 
 		var endpoints []orb.Endpoint
 		endpoints, err = cluster.Endpoints(ctx)
@@ -50,5 +34,5 @@ var startCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(startCmd)
+	rootCmd.AddCommand(endpointsCmd)
 }
