@@ -270,8 +270,12 @@ func (d *DockerOrbCluster) waitUntilClusterIsReady(ctx context.Context, listener
 		if err == nil {
 			defer resp.Body.Close()
 			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			checkPg:
 				for time.Now().Before(deadline) {
 					if c, err := d.Connect(ctx); err == nil {
+						if err = c.Ping(); err != nil {
+							continue checkPg
+						}
 						_ = c.Close()
 						for _, listener := range listeners {
 							if listener.Ready != nil {
