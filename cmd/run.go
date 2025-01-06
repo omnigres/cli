@@ -113,6 +113,7 @@ var runCmd = &cobra.Command{
 
 		var cluster orb.OrbCluster
 		cluster, err = getOrbCluster()
+		cluster.Config().Image.Name = runImage
 
 		if err != nil {
 			panic(err)
@@ -167,6 +168,9 @@ var runCmd = &cobra.Command{
 	},
 }
 
+var runImage string
+
 func init() {
 	rootCmd.AddCommand(runCmd)
+	runCmd.Flags().StringVarP(&runImage, "image", "i", orb.NewConfig().Image.Name, "The Omnigres image to use")
 }
