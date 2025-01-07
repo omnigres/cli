@@ -5,6 +5,9 @@ build:
  
 run: build
 	./${BINARY_NAME}
+
+install: build
+	mv ./${BINARY_NAME} ${HOME}/.local/bin/
  
 clean:
 	go clean
