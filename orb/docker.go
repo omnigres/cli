@@ -20,7 +20,6 @@ import (
 	"golang.org/x/term"
 	"io"
 	"net"
-	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -260,33 +259,31 @@ func (d *DockerOrbCluster) Run(ctx context.Context, listeners ...OrbRunEventList
 func (d *DockerOrbCluster) waitUntilClusterIsReady(ctx context.Context, listeners []OrbStartEventListener, cancel context.CancelFunc) {
 
 	deadline := time.Now().Add(1 * time.Minute)
-	ip, err := d.NetworkIP(ctx)
-	if err != nil {
-		panic(err)
-	}
 
+	ready := false
+
+checkPg:
 	for time.Now().Before(deadline) {
-		resp, err := http.Get("http://" + ip + ":8080")
-		if err == nil {
-			defer resp.Body.Close()
-			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			checkPg:
-				for time.Now().Before(deadline) {
-					if c, err := d.Connect(ctx); err == nil {
-						if err = c.Ping(); err != nil {
-							continue checkPg
-						}
-						_ = c.Close()
-						for _, listener := range listeners {
-							if listener.Ready != nil {
-								go listener.Ready(d)
-							}
-						}
-						return
-					}
+		if c, err := d.Connect(ctx); err == nil {
+			if err = c.Ping(); err != nil {
+				continue checkPg
+			}
+		checkOmnigres:
+			for time.Now().Before(deadline) {
+				if err = c.QueryRowContext(ctx, "select is_omnigres_ready()").Scan(&ready); err != nil {
 					time.Sleep(1 * time.Second)
+					continue checkOmnigres
 				}
-
+				_ = c.Close()
+				if ready {
+					for _, listener := range listeners {
+						if listener.Ready != nil {
+							go listener.Ready(d)
+						}
+					}
+					return
+				}
+				time.Sleep(1 * time.Second)
 			}
 		}
 		time.Sleep(1 * time.Second)
