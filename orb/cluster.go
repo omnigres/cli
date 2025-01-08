@@ -20,15 +20,22 @@ type OrbStartEventListener struct {
 
 type OrbRunEventListener struct {
 	OutputHandler func(cluster OrbCluster, reader io.Reader)
-	Started       func(cluster OrbCluster)
-	Ready         func(cluster OrbCluster)
 	Stopped       func(cluster OrbCluster)
+}
+
+type OrbClusterStartOptions struct {
+	Attachment struct {
+		ShouldAttach bool
+		Listeners    []OrbRunEventListener
+	}
+	AutoRemove bool
+	Listeners  []OrbStartEventListener
+	Runfile    bool
 }
 
 type OrbCluster interface {
 	Configure(options OrbOptions) error
-	Run(ctx context.Context, listeners ...OrbRunEventListener) error
-	Start(ctx context.Context, listeners ...OrbStartEventListener) error
+	Start(ctx context.Context, options OrbClusterStartOptions) error
 	Stop(ctx context.Context) error
 	Endpoints(ctx context.Context) ([]Endpoint, error)
 	Connect(ctx context.Context, database ...string) (*sql.DB, error)

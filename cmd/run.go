@@ -121,50 +121,61 @@ var runCmd = &cobra.Command{
 
 		ctx := context.Background()
 
-		err = cluster.Run(ctx, orb.OrbRunEventListener{
-			OutputHandler: func(cluster orb.OrbCluster, reader io.Reader) {
-				go func() { _, _ = stdcopy.StdCopy(os.Stdout, os.Stderr, reader) }()
-			},
-			Ready: func(cluster orb.OrbCluster) {
+		options := orb.OrbClusterStartOptions{
+			Runfile:    false,
+			AutoRemove: true,
+			Listeners: []orb.OrbStartEventListener{{
+				Ready: func(cluster orb.OrbCluster) {
 
-				err := migrate(ctx, cluster, true, orbs, databases)
+					err := migrate(ctx, cluster, true, orbs, databases)
 
-				if err != nil {
-					panic(err)
-				}
+					if err != nil {
+						panic(err)
+					}
 
-				if err != nil {
-					panic(err)
-				}
+					if err != nil {
+						panic(err)
+					}
 
-				var endpoints []orb.Endpoint
-				endpoints, err = cluster.Endpoints(ctx)
-				if err != nil {
-					panic(err)
-				}
+					var endpoints []orb.Endpoint
+					endpoints, err = cluster.Endpoints(ctx)
+					if err != nil {
+						panic(err)
+					}
 
-				rows := make([][]string, 0)
+					rows := make([][]string, 0)
 
-				for _, endpoint := range endpoints {
-					rows = append(rows, []string{endpoint.Database, endpoint.Protocol, endpoint.String()})
-				}
+					for _, endpoint := range endpoints {
+						rows = append(rows, []string{endpoint.Database, endpoint.Protocol, endpoint.String()})
+					}
 
-				t := table.New().
-					Border(lipgloss.RoundedBorder()).
-					BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("99"))).
-					BorderColumn(false).
-					Width(80).
-					Headers("Orb", "Protocol", "URL").
-					Rows(rows...)
+					t := table.New().
+						Border(lipgloss.RoundedBorder()).
+						BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("99"))).
+						BorderColumn(false).
+						Width(80).
+						Headers("Orb", "Protocol", "URL").
+						Rows(rows...)
 
-				fmt.Println(t)
+					fmt.Println(t)
 
-			},
-		})
+				},
+			}},
+		}
+		options.Attachment.ShouldAttach = true
+		options.Attachment.Listeners =
+			[]orb.OrbRunEventListener{
+				{
+					OutputHandler: func(cluster orb.OrbCluster, reader io.Reader) {
+						go func() { _, _ = stdcopy.StdCopy(os.Stdout, os.Stderr, reader) }()
+					},
+				},
+			}
+		err = cluster.Start(ctx, options)
+
 		if err != nil {
 			panic(err)
 		}
-
 	},
 }
 

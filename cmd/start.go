@@ -21,9 +21,10 @@ var startCmd = &cobra.Command{
 		ctx := context.Background()
 
 		readyCh := make(chan orb.OrbCluster, 1)
-		err = cluster.Start(ctx, orb.OrbStartEventListener{Ready: func(cluster orb.OrbCluster) {
-			readyCh <- cluster
-		}})
+		err = cluster.Start(ctx, orb.OrbClusterStartOptions{Runfile: true, Listeners: []orb.OrbStartEventListener{
+			{Ready: func(cluster orb.OrbCluster) {
+				readyCh <- cluster
+			}}}})
 		if err != nil {
 			panic(err)
 		}

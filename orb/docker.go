@@ -15,7 +15,6 @@ import (
 	"github.com/docker/docker/errdefs"
 	_ "github.com/lib/pq"
 	"github.com/omnigres/cli/internal/fileutils"
-	"github.com/samber/lo"
 	"github.com/spf13/viper"
 	"golang.org/x/term"
 	"io"
@@ -120,142 +119,6 @@ func (d *DockerOrbCluster) runfile() (v *viper.Viper) {
 	return
 }
 
-func (d *DockerOrbCluster) Run(ctx context.Context, listeners ...OrbRunEventListener) (err error) {
-	cli := d.client
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	var imageDigest string
-
-	// Prepare image
-	imageDigest, err = d.prepareImage(ctx)
-	if err != nil {
-		return
-	}
-
-	networkName := "omnigres"
-
-	_, err = cli.NetworkCreate(ctx, networkName, network.CreateOptions{
-		Driver: "bridge",
-	})
-
-	if err != nil {
-		// If it is a conflict, this is normal flow – network already exists
-		if !errdefs.IsConflict(err) {
-			// otherwise, it's an error
-			return
-		}
-	}
-
-	// Bindings
-	hostconfig := container.HostConfig{
-		AutoRemove: true,
-		Mounts: []mount.Mount{
-			{
-				Type:   mount.TypeBind,
-				Source: d.Path,
-				Target: default_directory_mount,
-			},
-		},
-		NetworkMode: container.NetworkMode(networkName),
-	}
-
-	// Prepare environment for every orb
-	env := make([]string, 0)
-	for _, orb := range d.Config().Orbs {
-		for _, e := range os.Environ() {
-			if strings.HasPrefix(e, strings.ToUpper(orb.Name+"_")) {
-				env = append(env, e)
-			}
-		}
-	}
-	env = append(env, "POSTGRES_HOST_AUTH_METHOD=password")
-
-	// Create container
-	var containerResponse container.CreateResponse
-	containerResponse, err = cli.ContainerCreate(ctx, &container.Config{Image: imageDigest, Env: env}, &hostconfig, nil, nil, "")
-	if err != nil {
-		return
-	}
-
-	var containerId string
-	containerId = containerResponse.ID
-
-	var resp types.HijackedResponse
-	resp, err = cli.ContainerAttach(ctx, containerId, container.AttachOptions{
-		Stream: true,
-		Stdin:  true,
-		Stdout: true,
-		Stderr: true,
-	})
-	if err != nil {
-		fmt.Printf("Error attaching to attach instance: %v\n", err)
-		return
-	}
-	defer resp.Close()
-
-	d.currentContainerId = containerId
-
-	// Connect stdout/stderr to the consumer
-	for _, listener := range listeners {
-		if listener.OutputHandler != nil {
-			listener.OutputHandler(d, resp.Reader)
-		}
-	}
-
-	// Start container
-	err = cli.ContainerStart(ctx, containerId, container.StartOptions{})
-	if err != nil {
-		return err
-	}
-
-	// Ensure we stop the container
-	defer func() {
-		timeout := 0 // forcibly terminate
-		newErr := cli.ContainerStop(ctx, containerId, container.StopOptions{Timeout: &timeout})
-		for _, listener := range listeners {
-			if listener.Stopped != nil {
-				go listener.Stopped(d)
-			}
-		}
-		if newErr != nil {
-			err = newErr
-		}
-	}()
-
-	for _, listener := range listeners {
-		if listener.Started != nil {
-			go listener.Started(d)
-		}
-	}
-	d.waitUntilClusterIsReady(ctx, lo.Map(listeners, func(listener OrbRunEventListener, index int) OrbStartEventListener {
-		return OrbStartEventListener{
-			Ready:   listener.Ready,
-			Started: listener.Started,
-		}
-	}), cancel)
-
-	statusCh, errCh := cli.ContainerWait(ctx, containerResponse.ID, container.WaitConditionNotRunning)
-	sigCtx, stop := signal.NotifyContext(ctx, os.Interrupt)
-	defer stop()
-
-	select {
-	case <-sigCtx.Done():
-		fmt.Println("Terminating cluster")
-	case err = <-errCh:
-		if err != nil {
-			panic(err)
-		}
-	case status := <-statusCh:
-		if status.StatusCode == 0 {
-			fmt.Printf("Omnigres exited with status: %d\n", status.StatusCode)
-		}
-	}
-
-	return
-}
-
 func (d *DockerOrbCluster) waitUntilClusterIsReady(ctx context.Context, listeners []OrbStartEventListener, cancel context.CancelFunc) {
 
 	deadline := time.Now().Add(1 * time.Minute)
@@ -293,26 +156,30 @@ checkPg:
 	cancel()
 }
 
-func (d *DockerOrbCluster) Start(ctx context.Context, listeners ...OrbStartEventListener) (err error) {
+func (d *DockerOrbCluster) Start(ctx context.Context, options OrbClusterStartOptions) (err error) {
 	cli := d.client
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	var imageDigest string
 
-	run := d.runfile()
-	err = fileutils.CreateIfNotExists(run.ConfigFileUsed(), false)
-	if err != nil {
-		return
-	}
-
-	err = run.ReadInConfig()
-	if err != nil {
-		return
-	}
-
+	var run *viper.Viper
 	var containerId string
-	containerId, err = d.containerId()
+
+	if options.Runfile {
+		run = d.runfile()
+		err = fileutils.CreateIfNotExists(run.ConfigFileUsed(), false)
+		if err != nil {
+			return
+		}
+
+		err = run.ReadInConfig()
+		if err != nil {
+			return
+		}
+
+		containerId, err = d.containerId()
+	}
 
 	// Prepare image
 	imageDigest, err = d.prepareImage(ctx)
@@ -366,6 +233,7 @@ checkContainer:
 
 		// Bindings
 		hostconfig := container.HostConfig{
+			AutoRemove: options.AutoRemove,
 			Mounts: []mount.Mount{
 				{
 					Type:   mount.TypeBind,
@@ -396,13 +264,37 @@ checkContainer:
 		containerId = containerResponse.ID
 	}
 
+	if options.Attachment.ShouldAttach {
+		var resp types.HijackedResponse
+		resp, err = cli.ContainerAttach(ctx, containerId, container.AttachOptions{
+			Stream: true,
+			Stdin:  true,
+			Stdout: true,
+			Stderr: true,
+		})
+		if err != nil {
+			fmt.Printf("Error attaching to attach instance: %v\n", err)
+			return
+		}
+		defer resp.Close()
+
+		d.currentContainerId = containerId
+
+		// Connect stdout/stderr to the consumer
+		for _, listener := range options.Attachment.Listeners {
+			if listener.OutputHandler != nil {
+				listener.OutputHandler(d, resp.Reader)
+			}
+		}
+	}
+
 	// Start container
 	err = cli.ContainerStart(ctx, containerId, container.StartOptions{})
 	if err != nil {
 		return err
 	}
 
-	for _, listener := range listeners {
+	for _, listener := range options.Listeners {
 		if listener.Started != nil {
 			go listener.Started(d)
 		}
@@ -419,15 +311,36 @@ checkContainer:
 		}
 	}()
 
-	run.Set("containerid", containerId)
+	if options.Runfile {
+		run.Set("containerid", containerId)
 
-	err = run.WriteConfig()
-	if err != nil {
-		return
+		err = run.WriteConfig()
+		if err != nil {
+			return
+		}
 	}
 
 	// TODO: do this in the background?
-	d.waitUntilClusterIsReady(ctx, listeners, cancel)
+	d.waitUntilClusterIsReady(ctx, options.Listeners, cancel)
+
+	if options.Attachment.ShouldAttach {
+		statusCh, errCh := cli.ContainerWait(ctx, containerId, container.WaitConditionNotRunning)
+		sigCtx, stop := signal.NotifyContext(ctx, os.Interrupt)
+		defer stop()
+
+		select {
+		case <-sigCtx.Done():
+			fmt.Println("Terminating cluster")
+		case err = <-errCh:
+			if err != nil {
+				panic(err)
+			}
+		case status := <-statusCh:
+			if status.StatusCode == 0 {
+				fmt.Printf("Omnigres exited with status: %d\n", status.StatusCode)
+			}
+		}
+	}
 
 	return nil
 }
