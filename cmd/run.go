@@ -143,18 +143,18 @@ var runCmd = &cobra.Command{
 					panic(err)
 				}
 
-				rows := [][]string{
-					{""},
-				}
+				rows := make([][]string, 0)
 
 				for _, endpoint := range endpoints {
-					rows = append(rows, []string{fmt.Sprintf("%s (%s): %s", endpoint.Database, endpoint.Protocol, endpoint.String())})
+					rows = append(rows, []string{endpoint.Database, endpoint.Protocol, endpoint.String()})
 				}
 
 				t := table.New().
 					Border(lipgloss.RoundedBorder()).
 					BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("99"))).
-					Headers("Omnigres Cluster").
+					BorderColumn(false).
+					Width(80).
+					Headers("Orb", "Protocol", "URL").
 					Rows(rows...)
 
 				fmt.Println(t)
