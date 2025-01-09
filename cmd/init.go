@@ -27,6 +27,7 @@ design and use one or more Omnigres extension.`,
 		var orbName string
 		if len(args) > 0 {
 			orbName = args[0]
+			path = filepath.Join(path, orbName)
 		} else {
 			orbName = filepath.Base(path)
 		}
@@ -40,7 +41,7 @@ design and use one or more Omnigres extension.`,
 			log.Fatal(err)
 		}
 		for _, dir := range []string{"src", "migrations"} {
-			err = fileutils.CreateIfNotExists(filepath.Join(path, orbName, dir), true)
+			err = fileutils.CreateIfNotExists(filepath.Join(path, dir), true)
 			if err != nil {
 				log.Fatal(err)
 			}
