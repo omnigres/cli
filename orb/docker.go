@@ -421,6 +421,10 @@ func (d *DockerOrbCluster) ConnectPsql(ctx context.Context, database ...string) 
 		Tty:          true,
 	})
 
+	if err != nil {
+		return
+	}
+
 	// Attach to the exec instance
 	resp, err := cli.ContainerExecAttach(ctx, execResponse.ID, container.ExecAttachOptions{
 		Tty: true,
