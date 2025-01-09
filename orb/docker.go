@@ -331,6 +331,7 @@ checkContainer:
 		select {
 		case <-sigCtx.Done():
 			fmt.Println("Terminating cluster")
+			d.Stop(ctx)
 		case err = <-errCh:
 			if err != nil {
 				return
