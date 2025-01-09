@@ -302,12 +302,21 @@ checkContainer:
 
 	// If we fail below, stop the container
 	defer func() {
-		if err != nil {
+		if err != nil || options.Attachment.ShouldAttach {
 			timeout := 0 // forcibly terminate
 			newErr := cli.ContainerStop(ctx, containerId, container.StopOptions{Timeout: &timeout})
+
 			if newErr != nil {
 				err = errors.Join(err, newErr)
 			}
+			if options.Attachment.ShouldAttach {
+				for _, listener := range options.Attachment.Listeners {
+					if listener.Stopped != nil {
+						go listener.Stopped(d)
+					}
+				}
+			}
+
 		}
 	}()
 
