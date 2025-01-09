@@ -3,18 +3,15 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"github.com/PuerkitoBio/goquery"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
-	"github.com/charmbracelet/log"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/omnigres/cli/orb"
+	"github.com/omnigres/cli/src"
 	"github.com/spf13/cobra"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 )
 
 var runCmd = &cobra.Command{
@@ -34,77 +31,23 @@ var runCmd = &cobra.Command{
 			orbs = []string{filepath.Base(path)}
 			databases = orbs
 		}
+
 		if len(args) == 1 {
-			path := args[0]
-			if ok, _ := regexp.MatchString("https://gist.github.com/(.+)/(.+)", path); ok {
-				response, err := http.Get(path)
-				if err != nil {
-					panic(err)
-				}
-				defer response.Body.Close()
-				if response.StatusCode != 200 {
-					println("status code error: %d %s", response.StatusCode, response.Status)
-					return
-				}
-				doc, err := goquery.NewDocumentFromReader(response.Body)
-				if err != nil {
-					panic(err)
-				}
-				dir, err := os.MkdirTemp("", "omnigres-run")
-				if err != nil {
-					panic(err)
-				}
-				defer os.RemoveAll(dir)
-
-				doc.Find("a").Each(func(i int, s *goquery.Selection) {
-					href, _ := s.Attr("href")
-					if ok, _ := regexp.MatchString("/raw/", href); ok {
-						response, err := http.Get("https://gist.github.com" + href)
-						if err != nil {
-							panic(err)
-						}
-						defer response.Body.Close()
-						if response.StatusCode != 200 {
-							println("status code error: %d %s", response.StatusCode, response.Status)
-							return
-						}
-						filename := filepath.Base(href)
-						file, err := os.Create(filepath.Join(dir, filename))
-						if err != nil {
-							panic(err)
-						}
-						defer file.Close()
-						_, err = io.Copy(file, response.Body)
-
-						if err != nil {
-							log.Fatalf("Failed to copy data to file: %v", err)
-						}
-					}
-				})
-				path = dir
-				databases = []string{"gist"}
-			}
-
-			workspace = path
-			path, err = getOrbPath(false)
-
+			inputPath := args[0]
+			srcdir, err := src.GetSourceDirectory(inputPath)
+			defer srcdir.Close()
 			if err != nil {
 				panic(err)
 			}
 
-			info, err := os.Stat(path)
-			if os.IsNotExist(err) {
-				fmt.Printf("Path does not exist: %s\n", path)
-				return
-			} else if err != nil {
-				fmt.Printf("Error checking path: %v\n", err)
-				return
+			if src.IsGitHubGistURL(inputPath) {
+				databases = []string{"gist"}
 			}
 
-			if !info.IsDir() {
-				fmt.Printf("Path exists but is not a directory: %s\n", path)
-				return
-			}
+			workspace = srcdir.Path()
+			var path string
+			path, err = getOrbPath(false)
+
 			orbs = []string{"."}
 			if len(databases) == 0 {
 				databases = []string{filepath.Base(path)}
