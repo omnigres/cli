@@ -4,6 +4,7 @@ import (
 	"errors"
 	"github.com/omnigres/cli/internal/fileutils"
 	"github.com/spf13/viper"
+	"os"
 	"path/filepath"
 )
 
@@ -61,7 +62,7 @@ func LoadConfig(path string) (cfg *Config, err error) {
 	v.SetConfigFile(filepath.Join(path, "omnigres.yaml"))
 	err = v.ReadInConfig()
 	if err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+		if _, ok := err.(*os.PathError); ok {
 			cfg = NewConfig()
 			err = nil
 			return
