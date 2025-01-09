@@ -56,11 +56,12 @@ var runCmd = &cobra.Command{
 
 		var cluster orb.OrbCluster
 		cluster, err = getOrbCluster()
-		cluster.Config().Image.Name = runImage
 
 		if err != nil {
 			panic(err)
 		}
+
+		cluster.Config().Image.Name = runImage
 
 		ctx := context.Background()
 
