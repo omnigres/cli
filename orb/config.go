@@ -58,9 +58,7 @@ func (c *Config) SaveAs(path string) (err error) {
 
 func LoadConfig(path string) (cfg *Config, err error) {
 	v := viper.New()
-	v.SetConfigName("omnigres")
-	v.SetConfigType("yaml")
-	v.AddConfigPath(path)
+	v.SetConfigFile(filepath.Join(path, "omnigres.yaml"))
 	err = v.ReadInConfig()
 	if err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
