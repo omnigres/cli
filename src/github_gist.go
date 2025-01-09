@@ -1,6 +1,7 @@
 package src
 
 import (
+	"fmt"
 	"github.com/PuerkitoBio/goquery"
 	"io"
 	"net/http"
@@ -27,35 +28,37 @@ func (t *tempGistDirectory) Close() error {
 }
 
 func getGitHubGist(input string) (srcdir SourceDirectory, err error) {
-	response, err := http.Get(input)
+	var response *http.Response
+	response, err = http.Get(input)
 	if err != nil {
-		panic(err)
+		return
 	}
 	defer response.Body.Close()
 	if response.StatusCode != 200 {
-		println("status code error: %d %s", response.StatusCode, response.Status)
+		err = fmt.Errorf("status code error: %d %s", response.StatusCode, response.Status)
 		return
 	}
-	doc, err := goquery.NewDocumentFromReader(response.Body)
+	var doc *goquery.Document
+	doc, err = goquery.NewDocumentFromReader(response.Body)
 	if err != nil {
-		panic(err)
+		return
 	}
-	dir, err := os.MkdirTemp("", "omnigres-gist")
+	var dir string
+	dir, err = os.MkdirTemp("", "omnigres-gist")
 	if err != nil {
-		panic(err)
+		return
 	}
-	//defer os.RemoveAll(dir)
 
 	doc.Find("a").Each(func(i int, s *goquery.Selection) {
 		href, _ := s.Attr("href")
 		if ok, _ := regexp.MatchString("/raw/", href); ok {
-			response, err := http.Get("https://gist.github.com" + href)
+			response, err = http.Get("https://gist.github.com" + href)
 			if err != nil {
-				panic(err)
+				return
 			}
 			defer response.Body.Close()
 			if response.StatusCode != 200 {
-				println("status code error: %d %s", response.StatusCode, response.Status)
+				err = fmt.Errorf("status code error: %d %s", response.StatusCode, response.Status)
 				return
 			}
 			filename := filepath.Base(href)

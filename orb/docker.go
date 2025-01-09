@@ -333,7 +333,7 @@ checkContainer:
 			fmt.Println("Terminating cluster")
 		case err = <-errCh:
 			if err != nil {
-				panic(err)
+				return
 			}
 		case status := <-statusCh:
 			if status.StatusCode == 0 {

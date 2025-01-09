@@ -103,9 +103,9 @@ func Migra(ctx context.Context, cluster orb.OrbCluster, fromDb, toDb string) (er
 
 		statusCh, errCh := cli.ContainerWait(ctx, containerResponse.ID, container.WaitConditionNotRunning)
 		select {
-		case err := <-errCh:
+		case err = <-errCh:
 			if err != nil {
-				panic(err)
+				return
 			}
 		case status := <-statusCh:
 			if status.StatusCode == 0 {
