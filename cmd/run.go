@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
+	"github.com/charmbracelet/log"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/omnigres/cli/orb"
 	"github.com/omnigres/cli/src"
@@ -37,7 +38,7 @@ var runCmd = &cobra.Command{
 			srcdir, err := src.GetSourceDirectory(inputPath)
 			defer srcdir.Close()
 			if err != nil {
-				panic(err)
+				log.Fatal(err)
 			}
 
 			if src.IsGitHubGistURL(inputPath) {
@@ -58,7 +59,7 @@ var runCmd = &cobra.Command{
 		cluster, err = getOrbCluster()
 
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 
 		cluster.Config().Image.Name = runImage
@@ -74,17 +75,17 @@ var runCmd = &cobra.Command{
 					err := migrate(ctx, cluster, true, orbs, databases)
 
 					if err != nil {
-						panic(err)
+						log.Fatal(err)
 					}
 
 					if err != nil {
-						panic(err)
+						log.Fatal(err)
 					}
 
 					var endpoints []orb.Endpoint
 					endpoints, err = cluster.Endpoints(ctx)
 					if err != nil {
-						panic(err)
+						log.Fatal(err)
 					}
 
 					rows := make([][]string, 0)
@@ -118,7 +119,7 @@ var runCmd = &cobra.Command{
 		err = cluster.Start(ctx, options)
 
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 	},
 }

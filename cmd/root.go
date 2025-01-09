@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/charmbracelet/log"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -25,7 +26,7 @@ var workspace string
 func init() {
 	cwd, err := os.Getwd()
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	rootCmd.PersistentFlags().StringVarP(&workspace, "workspace", "w", cwd, "path to workspace")
 }

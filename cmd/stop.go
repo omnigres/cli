@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"github.com/charmbracelet/log"
 	"github.com/omnigres/cli/orb"
 	"github.com/spf13/cobra"
 )
@@ -15,12 +16,12 @@ var stopCmd = &cobra.Command{
 		var err error
 		cluster, err = getOrbCluster()
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 		ctx := context.Background()
 		err = cluster.Stop(ctx)
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 	},
 }

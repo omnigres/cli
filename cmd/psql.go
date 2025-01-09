@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"github.com/charmbracelet/log"
 	"github.com/omnigres/cli/orb"
 	"github.com/spf13/cobra"
 )
@@ -16,12 +17,12 @@ var psqlCmd = &cobra.Command{
 		var err error
 		cluster, err = getOrbCluster()
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 		ctx := context.Background()
 		err = cluster.ConnectPsql(ctx, database)
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 	},
 }

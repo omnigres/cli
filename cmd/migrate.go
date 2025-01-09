@@ -27,7 +27,7 @@ var migrateCmd = &cobra.Command{
 		var err error
 		cluster, err = getOrbCluster()
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 		ctx := context.Background()
 		orbs := lo.Map(cluster.Config().Orbs, func(cfg orb.OrbCfg, _ int) string { return cfg.Name })
@@ -58,7 +58,7 @@ func migrate(ctx context.Context, cluster orb.OrbCluster, dbReset bool, orbs []s
 		}
 		err := db.QueryRowContext(ctx, `select datname from pg_database where datname = $1`, dbName).Scan(&datname)
 		if err != nil && err != sql.ErrNoRows {
-			panic(err)
+			log.Fatal(err)
 		}
 
 		createDb := false
@@ -71,7 +71,7 @@ func migrate(ctx context.Context, cluster orb.OrbCluster, dbReset bool, orbs []s
 			if err != sql.ErrNoRows {
 				_, err = db.ExecContext(ctx, fmt.Sprintf(`drop database %q`, dbName))
 				if err != nil {
-					panic(err)
+					log.Fatal(err)
 				}
 				createDb = true
 			}
@@ -79,7 +79,7 @@ func migrate(ctx context.Context, cluster orb.OrbCluster, dbReset bool, orbs []s
 		if createDb {
 			_, err = db.ExecContext(ctx, fmt.Sprintf(`create database %q`, dbName))
 			if err != nil {
-				panic(err)
+				log.Fatal(err)
 			}
 		}
 
@@ -109,7 +109,7 @@ func migrate(ctx context.Context, cluster orb.OrbCluster, dbReset bool, orbs []s
 
 		conn, err := db.Conn(ctx)
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 		defer conn.Close()
 		conn.Raw(func(driverConn any) error {
@@ -126,7 +126,7 @@ func migrate(ctx context.Context, cluster orb.OrbCluster, dbReset bool, orbs []s
 			fmt.Sprintf("dbname=%s user=omnigres", dbName), orbSource)
 
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 		defer rows.Close()
 
@@ -134,7 +134,7 @@ func migrate(ctx context.Context, cluster orb.OrbCluster, dbReset bool, orbs []s
 			var migration_filename, migration_statement, execution_error sql.NullString
 			err = rows.Scan(&migration_filename, &migration_statement, &execution_error)
 			if err != nil {
-				panic(err)
+				log.Fatal(err)
 			}
 		}
 

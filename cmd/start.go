@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"github.com/charmbracelet/log"
 	"github.com/omnigres/cli/orb"
 	"github.com/spf13/cobra"
 )
@@ -15,7 +16,7 @@ var startCmd = &cobra.Command{
 		var err error
 		cluster, err = getOrbCluster()
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 
 		ctx := context.Background()
@@ -26,11 +27,11 @@ var startCmd = &cobra.Command{
 				readyCh <- cluster
 			}}}})
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 		err = cluster.Config().Save()
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 
 		<-readyCh
@@ -40,7 +41,7 @@ var startCmd = &cobra.Command{
 		var endpoints []orb.Endpoint
 		endpoints, err = cluster.Endpoints(ctx)
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 
 		for _, endpoint := range endpoints {

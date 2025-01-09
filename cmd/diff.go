@@ -5,6 +5,7 @@ package cmd
 
 import (
 	"context"
+	"github.com/charmbracelet/log"
 	"github.com/omnigres/cli/diff"
 	"github.com/omnigres/cli/orb"
 	"github.com/samber/lo"
@@ -28,21 +29,21 @@ to quickly create a Cobra application.`,
 		var err error
 		cluster, err = getOrbCluster()
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 		ctx := context.Background()
 		orbs := lo.Map(cluster.Config().Orbs, func(cfg orb.OrbCfg, _ int) string { return cfg.Name })
 		orbs_ := lo.Map(cluster.Config().Orbs, func(cfg orb.OrbCfg, _ int) string { return cfg.Name + "_diff" })
 		err = migrate(ctx, cluster, true, orbs, orbs_)
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 		switch diffMethod {
 		case "migra":
 			for i, orb := range orbs {
 				err = diff.Migra(ctx, cluster, orb, orbs_[i])
 				if err != nil {
-					panic(err)
+					log.Fatal(err)
 				}
 			}
 		default:
@@ -50,7 +51,7 @@ to quickly create a Cobra application.`,
 			return
 		}
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 	},
 }
@@ -61,6 +62,6 @@ func init() {
 	rootCmd.AddCommand(diffCmd)
 	diffCmd.Flags().StringVarP(&diffMethod, "method", "m", "", "Diff method")
 	if diffCmd.MarkFlagRequired("method") != nil {
-		panic("can't make flag required for diff")
+		log.Fatal("can't make flag required for diff")
 	}
 }

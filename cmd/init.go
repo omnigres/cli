@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/charmbracelet/log"
 	"github.com/omnigres/cli/internal/fileutils"
 	"github.com/omnigres/cli/orb"
 	"github.com/spf13/cobra"
@@ -21,7 +22,7 @@ design and use one or more Omnigres extension.`,
 		var err error
 		path, err = getOrbPath(true)
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 		var orbName string
 		if len(args) > 0 {
@@ -36,12 +37,12 @@ design and use one or more Omnigres extension.`,
 		})
 		err = cfg.SaveAs(path)
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 		for _, dir := range []string{"src", "migrations"} {
 			err = fileutils.CreateIfNotExists(filepath.Join(path, orbName, dir), true)
 			if err != nil {
-				panic(err)
+				log.Fatal(err)
 			}
 		}
 	},
