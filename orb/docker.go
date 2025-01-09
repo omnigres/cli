@@ -304,7 +304,7 @@ checkContainer:
 	defer func() {
 		if err != nil {
 			timeout := 0 // forcibly terminate
-			newErr := cli.ContainerStop(context.TODO(), containerId, container.StopOptions{Timeout: &timeout})
+			newErr := cli.ContainerStop(ctx, containerId, container.StopOptions{Timeout: &timeout})
 			if newErr != nil {
 				err = errors.Join(err, newErr)
 			}
