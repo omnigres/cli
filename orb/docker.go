@@ -15,6 +15,7 @@ import (
 	"github.com/docker/docker/errdefs"
 	_ "github.com/lib/pq"
 	"github.com/omnigres/cli/internal/fileutils"
+	"github.com/omnigres/cli/tui"
 	"github.com/spf13/viper"
 	"golang.org/x/term"
 	"io"
@@ -90,7 +91,19 @@ func (d *DockerOrbCluster) prepareImage(ctx context.Context) (digest string, err
 			return
 		}
 		defer reader.Close()
-		io.Copy(os.Stdout, reader)
+
+		progress := tui.NewDownloadProgress("Downloading docker image "+imageName, reader)
+		progressModel, progressError := progress.Run()
+		if progressError != nil {
+			fmt.Println("Download failed to run for image", imageName, progressError.Error())
+			os.Exit(1)
+		}
+
+		m := progressModel.(tui.Model)
+		if m.Err != nil {
+			fmt.Println("Oh no! Could not download image", imageName)
+			os.Exit(1)
+		}
 
 		// Getting the image locally again to get the digest
 		img, _, err = cli.ImageInspectWithRaw(ctx, imageName)
