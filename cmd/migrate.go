@@ -32,13 +32,19 @@ var migrateCmd = &cobra.Command{
 		ctx := context.Background()
 		orbs := lo.Map(cluster.Config().Orbs, func(cfg orb.OrbCfg, _ int) string { return cfg.Name })
 		err = migrate(ctx, cluster, dbReset, orbs, orbs)
-
+		if err != nil {
+			log.Fatal(err)
+		}
 	},
 }
 
 func migrate(ctx context.Context, cluster orb.OrbCluster, dbReset bool, orbs []string, databases []string) (err error) {
 	if len(orbs) != len(databases) {
 		err = errors.New("orbs and databases have to be of the same size")
+		return
+	}
+	if len(orbs) == 0 {
+		err = errors.New("You need at least one configured Orb to migrate")
 		return
 	}
 	logger := log.New(os.Stdout)
