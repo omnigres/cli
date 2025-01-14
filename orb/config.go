@@ -2,9 +2,9 @@ package orb
 
 import (
 	"errors"
+	"fmt"
 	"github.com/omnigres/cli/internal/fileutils"
 	"github.com/spf13/viper"
-	"os"
 	"path/filepath"
 )
 
@@ -62,12 +62,7 @@ func LoadConfig(path string) (cfg *Config, err error) {
 	v.SetConfigFile(filepath.Join(path, "omnigres.yaml"))
 	err = v.ReadInConfig()
 	if err != nil {
-		if _, ok := err.(*os.PathError); ok {
-			cfg = NewConfig()
-			err = nil
-			return
-		}
-		return
+		return nil, fmt.Errorf("omnigres.yaml not found in %s. Try setting a different workspace with -w or running omnigres init to create a new project config.", path)
 	}
 
 	cfg = NewConfig()
