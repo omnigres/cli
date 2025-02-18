@@ -2,6 +2,7 @@ package orb
 
 import (
 	"errors"
+	"github.com/charmbracelet/log"
 	"github.com/omnigres/cli/internal/fileutils"
 	"github.com/spf13/viper"
 	"os"
@@ -59,10 +60,13 @@ func (c *Config) SaveAs(path string) (err error) {
 
 func LoadConfig(path string) (cfg *Config, err error) {
 	v := viper.New()
-	v.SetConfigFile(filepath.Join(path, "omnigres.yaml"))
+	configPath := filepath.Join(path, "omnigres.yaml")
+	log.Debug("Loading config", "path", configPath)
+	v.SetConfigFile(configPath)
 	err = v.ReadInConfig()
 	if err != nil {
 		if _, ok := err.(*os.PathError); ok {
+			log.Debug("Creating blank config")
 			cfg = NewConfig()
 			err = nil
 			return

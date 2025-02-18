@@ -12,6 +12,12 @@ var rootCmd = &cobra.Command{
 	Use:   "omnigres",
 	Short: "Omnigres CLI",
 	Long:  `Omnigres CLI toolkit allows easy creation and management of Omnigres applications and orbs.`,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		if verbose {
+			log.SetLevel(log.DebugLevel)
+			log.Debug("Verbose mode enabled")
+		}
+	},
 }
 
 func Execute() {
@@ -22,6 +28,7 @@ func Execute() {
 }
 
 var workspace string
+var verbose bool
 
 func init() {
 	cwd, err := os.Getwd()
@@ -29,4 +36,5 @@ func init() {
 		log.Fatal(err)
 	}
 	rootCmd.PersistentFlags().StringVarP(&workspace, "workspace", "w", cwd, "path to workspace")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "display debug messages")
 }
