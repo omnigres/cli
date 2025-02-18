@@ -2,9 +2,10 @@ package cmd
 
 import (
 	"github.com/charmbracelet/log"
-	"os"
-
 	"github.com/spf13/cobra"
+
+	"os"
+	"path/filepath"
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -30,11 +31,29 @@ func Execute() {
 var workspace string
 var verbose bool
 
+func findOmnigresDir(dir string) (string, error) {
+	if _, err := os.Stat(filepath.Join(dir, "omnigres.yaml")); err == nil {
+		return dir, nil
+	}
+
+	parent := filepath.Dir(dir)
+	if parent == dir {
+		// Reached the root, return original working directory
+		return os.Getwd()
+	}
+	return findOmnigresDir(parent)
+}
+
 func init() {
 	cwd, err := os.Getwd()
 	if err != nil {
 		log.Fatal(err)
 	}
-	rootCmd.PersistentFlags().StringVarP(&workspace, "workspace", "w", cwd, "path to workspace")
+
+	omnigresDir, err := findOmnigresDir(cwd)
+	if err != nil {
+		log.Fatal(err)
+	}
+	rootCmd.PersistentFlags().StringVarP(&workspace, "workspace", "w", omnigresDir, "path to workspace")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "display debug messages")
 }
