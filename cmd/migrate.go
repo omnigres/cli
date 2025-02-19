@@ -87,7 +87,6 @@ func assembleOrbs(
 ) (err error) {
 	logger := log.New(os.Stdout)
 	logger.SetReportTimestamp(true)
-	logger.Info("Starting migration...")
 
 	var db *sql.DB
 	db, err = cluster.Connect(ctx, "omnigres")
@@ -95,6 +94,7 @@ func assembleOrbs(
 		return
 	}
 	for _, orbName := range orbs {
+		log.Infof("Assembling orb %s", orbName)
 		dbName := databaseForOrb(orbName)
 		logger.SetPrefix(fmt.Sprintf("[%s] ", dbName))
 		var dbExists bool
@@ -157,7 +157,7 @@ func assembleOrbs(
 			return nil
 		})
 
-		orbSource := path.Join(dbName, "src")
+		orbSource := path.Join(orbName, "src")
 		rows, err := conn.QueryContext(ctx,
 			`select migration_filename, migration_statement, execution_error from omni_schema.assemble_schema($1, omni_vfs.local_fs('/mnt/host'), $2) where execution_error is not null`,
 			fmt.Sprintf("dbname=%s user=omnigres", dbName), orbSource)
