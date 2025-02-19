@@ -36,13 +36,19 @@ var runCmd = &cobra.Command{
 		if len(args) == 1 {
 			inputPath := args[0]
 			srcdir, err := src.GetSourceDirectory(inputPath)
-			defer srcdir.Close()
 			if err != nil {
 				log.Fatal(err)
 			}
+			defer srcdir.Close()
 
 			if src.IsGitHubGistURL(inputPath) {
 				databases = []string{"gist"}
+			} else {
+				workspace = srcdir.Path()
+				var path string
+				path, err = getOrbPath(false)
+
+				databases = []string{filepath.Base(path)}
 			}
 
 			workspace = srcdir.Path()
