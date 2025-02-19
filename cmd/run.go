@@ -24,13 +24,12 @@ var runCmd = &cobra.Command{
    `,
 	Run: func(cmd *cobra.Command, args []string) {
 		var err error
-		var orbs, databases []string
+		var orbs []string
 		if len(args) == 0 {
 			var path string
 			path, err = getOrbPath(false)
 
 			orbs = []string{filepath.Base(path)}
-			databases = orbs
 		}
 
 		if len(args) == 1 {
@@ -42,23 +41,15 @@ var runCmd = &cobra.Command{
 			defer srcdir.Close()
 
 			if src.IsGitHubGistURL(inputPath) {
-				databases = []string{"gist"}
+				orbs = []string{"gist"}
 			} else {
 				workspace = srcdir.Path()
 				var path string
 				path, err = getOrbPath(false)
 
-				databases = []string{filepath.Base(path)}
+				orbs = []string{filepath.Base(path)}
 			}
 
-			workspace = srcdir.Path()
-			var path string
-			path, err = getOrbPath(false)
-
-			orbs = []string{"."}
-			if len(databases) == 0 {
-				databases = []string{filepath.Base(path)}
-			}
 		}
 
 		var cluster orb.OrbCluster
@@ -78,7 +69,13 @@ var runCmd = &cobra.Command{
 			Listeners: []orb.OrbStartEventListener{{
 				Ready: func(cluster orb.OrbCluster) {
 
-					err := migrate(ctx, cluster, true, orbs, databases)
+					err := assembleOrbs(
+						ctx,
+						cluster,
+						true,
+						orbs,
+						func(orbName string) string { return orbName },
+					)
 
 					if err != nil {
 						log.Fatal(err)
