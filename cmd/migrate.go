@@ -87,7 +87,6 @@ func assembleOrbs(
 ) (err error) {
 	logger := log.New(os.Stdout)
 	logger.SetReportTimestamp(true)
-	logger.Info("Starting migration...")
 
 	var db *sql.DB
 	db, err = cluster.Connect(ctx, "omnigres")
@@ -95,6 +94,7 @@ func assembleOrbs(
 		return
 	}
 	for _, orbName := range orbs {
+		log.Infof("Assembling orb %s", orbName)
 		dbName := databaseForOrb(orbName)
 		logger.SetPrefix(fmt.Sprintf("[%s] ", dbName))
 		var dbExists bool
