@@ -3,12 +3,15 @@ package cmd
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"os"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/log"
+	"github.com/lib/pq"
 	"github.com/omnigres/cli/orb"
 	"github.com/spf13/cobra"
 )
@@ -44,6 +47,10 @@ var testCmd = &cobra.Command{
 		}
 
 		err = assembleOrbs(ctx, cluster, true, orbs, nameForTestDatabase)
+		if err != nil {
+			log.Fatal(err)
+		}
+
 		err = testOrbs(ctx, cluster, orbs, nameForTestDatabase)
 
 		if err != nil {
@@ -108,37 +115,25 @@ func testOrbs(
 
 		// assemble tests in target db
 		orbSource := path.Join(orbName, "test")
-		assemblyRows, err := conn.QueryContext(
-			ctx,
-			`select migration_filename, migration_statement, execution_error 
-       from omni_schema.assemble_schema($1, omni_vfs.local_fs('/mnt/host'), $2)`,
-			fmt.Sprintf("dbname=%s user=omnigres", dbName),
-			orbSource,
-		)
-		if err != nil {
-			return err
-		}
-		defer assemblyRows.Close()
-		for assemblyRows.Next() {
-			var migration_filename, migration_statement, execution_error sql.NullString
-			err = assemblyRows.Scan(&migration_filename, &migration_statement, &execution_error)
-			if err != nil {
-				return err
-			}
-			if execution_error.Valid {
-				return fmt.Errorf(
-					"Error assembling tests for orb %s: %s\nFile: %s\nStatement: %s",
-					orbName,
-					execution_error.String,
-					migration_filename.String,
-					migration_statement.String,
-				)
-			}
-		}
+		assembleSchema(ctx, testRunner, orbSource, dbName)
 
 		// run tests
 		log.Infof("")
-		log.Infof("Running tests for %s", orbName)
+		log.Infof("=== Running tests for %s ===", orbName)
+
+		testResultReporting := func(notice *pq.Error) {
+			messages := strings.Split(notice.Message, " – ")
+			if messages[0] == "ok" && len(messages) >= 2 {
+				log.Infof("✅ - %s", messages[1])
+			} else if messages[0] == "failure" && len(messages) >= 3 {
+				log.Errorf("🔴 - %s (%s)", messages[1], messages[2])
+			}
+		}
+		conn.Raw(func(driverConn any) error {
+			pq.SetNoticeHandler(driverConn.(driver.Conn), testResultReporting)
+			return nil
+		})
+
 		testRows, err := conn.QueryContext(
 			ctx,
 			`select name, description, error_message from omni_test.run_tests($1)`,
@@ -149,18 +144,11 @@ func testOrbs(
 		}
 		defer testRows.Close()
 
-		log.Info("=== Test results ==================================================")
 		for testRows.Next() {
 			var name, description, error_message sql.NullString
 			err = testRows.Scan(&name, &description, &error_message)
 			if err != nil {
 				return err
-			}
-			if error_message.Valid {
-				log.Errorf("🔴 - %s (%s)", name.String, error_message.String)
-			} else {
-				log.Infof("✅ - %s", name.String)
-
 			}
 		}
 		log.Info("===================================================================")
