@@ -126,11 +126,12 @@ func assembleOrbs(
 		levels := make(map[string]log.Level)
 		levels["info"] = log.InfoLevel
 		levels["error"] = log.ErrorLevel
-		reporting := func(notice *pq.Error) {
+		jsonMessageReporting := func(notice *pq.Error) {
 			var message map[string]interface{}
 			err := json.NewDecoder(strings.NewReader(notice.Message)).Decode(&message)
 			if err != nil {
-				logger.Error(err)
+				logger.Errorf("Message is not valid JSON: %s", notice.Message)
+				return
 			}
 
 			mapToArray := func(m map[string]interface{}) []interface{} {
@@ -153,7 +154,7 @@ func assembleOrbs(
 		}
 		defer conn.Close()
 		conn.Raw(func(driverConn any) error {
-			pq.SetNoticeHandler(driverConn.(driver.Conn), reporting)
+			pq.SetNoticeHandler(driverConn.(driver.Conn), jsonMessageReporting)
 			return nil
 		})
 
