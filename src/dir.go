@@ -2,17 +2,14 @@ package src
 
 import (
 	"os"
+
+	"github.com/charmbracelet/log"
 )
 
 func IsDirectory(input string) bool {
-
 	info, err := os.Stat(input)
-
-	if err != nil {
-		return false
-	}
-
-	return info.IsDir()
+	log.Debug("IsDirectory", "input", input, "info", info, "err", err)
+	return err == nil && info.IsDir()
 }
 
 type ExistingDirectory struct {
