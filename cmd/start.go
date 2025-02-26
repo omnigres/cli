@@ -22,7 +22,7 @@ var startCmd = &cobra.Command{
 		ctx := context.Background()
 
 		readyCh := make(chan orb.OrbCluster, 1)
-		err = cluster.Start(ctx, orb.OrbClusterStartOptions{Runfile: true, Listeners: []orb.OrbStartEventListener{
+		err = cluster.StartWithCurrentUser(ctx, orb.OrbClusterStartOptions{Runfile: true, Listeners: []orb.OrbStartEventListener{
 			{Ready: func(cluster orb.OrbCluster) {
 				readyCh <- cluster
 			}}}})
@@ -36,7 +36,7 @@ var startCmd = &cobra.Command{
 
 		<-readyCh
 
-		fmt.Println("Omnigres Orb cluster started.\n")
+		log.Info("Omnigres Orb cluster started.")
 
 		var endpoints []orb.Endpoint
 		endpoints, err = cluster.Endpoints(ctx)
