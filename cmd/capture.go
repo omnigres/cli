@@ -167,7 +167,7 @@ func init() {
 				}
 
 				style := lipgloss.NewStyle().
-          SetString("⏳ " + message).
+					SetString("⏳ " + message).
 					PaddingLeft(2).
 					Width(120).
 					Foreground(lipgloss.Color("201"))
