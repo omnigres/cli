@@ -3,16 +3,16 @@ package cmd
 import (
 	"context"
 	"database/sql"
-	"database/sql/driver"
+	"encoding/json"
 	"fmt"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"os"
 	"path"
-	"strings"
 	"time"
 
 	"github.com/charmbracelet/log"
-	"github.com/lib/pq"
 	"github.com/omnigres/cli/orb"
+	"github.com/relvacode/iso8601"
 	"github.com/spf13/cobra"
 )
 
@@ -121,18 +121,10 @@ func testOrbs(
 		log.Infof("")
 		log.Infof("=== Running tests for %s ===", orbName)
 
-		testResultReporting := func(notice *pq.Error) {
-			messages := strings.Split(notice.Message, " – ")
-			if messages[0] == "ok" && len(messages) >= 2 {
-				log.Infof("✅ - %s", messages[1])
-			} else if messages[0] == "failure" && len(messages) >= 3 {
-				log.Errorf("🔴 - %s (%s)", messages[1], messages[2])
-			}
+		err = setupCloudevents(ctx, conn)
+		if err != nil {
+			return err
 		}
-		conn.Raw(func(driverConn any) error {
-			pq.SetNoticeHandler(driverConn.(driver.Conn), testResultReporting)
-			return nil
-		})
 
 		testRows, err := conn.QueryContext(
 			ctx,
@@ -165,6 +157,46 @@ func testOrbs(
 	return
 }
 
+type testPassed struct {
+	Name        string       `json:"name"`
+	Description string       `json:"description"`
+	StartTime   iso8601.Time `json:"start_time"`
+	EndTime     iso8601.Time `json:"end_time"`
+}
+
+type testFailed struct {
+	Name        string       `json:"name"`
+	Description string       `json:"description"`
+	StartTime   iso8601.Time `json:"start_time"`
+	EndTime     iso8601.Time `json:"end_time"`
+	Error       string       `json:"error"`
+}
+
 func init() {
 	rootCmd.AddCommand(testCmd)
+
+	handler := cloudeventHandler{
+		Callback: func(e *cloudevents.Event) {
+			switch e.Type() {
+			case "org.omnigres.omni_test.test.passed.v1":
+				var msg testPassed
+				err := json.Unmarshal(e.Data(), &msg)
+				if err == nil {
+					log.Infof("✅ - %s (%s) [%s]", msg.Name, msg.Description, msg.EndTime.Sub(msg.StartTime.Time).String())
+				} else {
+					log.Error(err)
+				}
+			case "org.omnigres.omni_test.test.failed.v1":
+				var msg testFailed
+				err := json.Unmarshal(e.Data(), &msg)
+				if err == nil {
+					log.Infof("🔴 - %s (%s) [%s]: %s", msg.Name, msg.Description, msg.EndTime.Sub(msg.StartTime.Time).String(), msg.Error)
+				} else {
+					log.Error(err)
+				}
+			default:
+			}
+		},
+	}
+	cloudeventHandlers = append(cloudeventHandlers, handler)
 }
