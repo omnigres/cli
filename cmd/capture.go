@@ -3,13 +3,15 @@ package cmd
 import (
 	"context"
 	"database/sql"
-	"database/sql/driver"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/charmbracelet/lipgloss"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
+
 	"github.com/charmbracelet/log"
-	"github.com/lib/pq"
 	"github.com/omnigres/cli/orb"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
@@ -85,21 +87,19 @@ func captureSchemaRevision(
 		return err
 	}
 
-	jsonMessageReporting := func(notice *pq.Error) {
-		log.Infof("%s", notice.Message)
-	}
 	conn, err := db.Conn(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	defer conn.Close()
-	conn.Raw(func(driverConn any) error {
-		pq.SetNoticeHandler(driverConn.(driver.Conn), jsonMessageReporting)
-		return nil
-	})
+	err = setupCloudevents(ctx, conn)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+
 	var revision string
-	err = db.QueryRowContext(
+	err = conn.QueryRowContext(
 		ctx,
 		`select omni_schema.capture_schema_revision(omni_vfs.local_fs($1), 'src', 'revisions')`,
 		fmt.Sprintf("/mnt/host/%s", orbName),
@@ -125,7 +125,7 @@ func captureOrbs(
 	var db *sql.DB
 	db, err = cluster.Connect(ctx, "omnigres")
 	if err != nil {
-    log.Error("Could not connect to orb. Ensure the docker container is running, perhaps 'omnigres start' will fix it.")
+		log.Error("Could not connect to orb. Ensure the docker container is running, perhaps 'omnigres start' will fix it.")
 		return
 	}
 	for _, orbName := range orbs {
@@ -154,4 +154,27 @@ func captureOrbs(
 
 func init() {
 	rootCmd.AddCommand(captureCmd)
+
+	handler := cloudeventHandler{
+		Callback: func(e *cloudevents.Event) {
+			switch e.Type() {
+			case "org.omnigres.omni_schema.progress_report.v1":
+				message := string(e.Data())
+				err := json.Unmarshal(e.Data(), &message)
+				if err != nil {
+					log.Errorf("Error parsing progress report %s", string(e.Data()))
+					return
+				}
+
+				style := lipgloss.NewStyle().
+          SetString("⏳ " + message).
+					PaddingLeft(2).
+					Width(120).
+					Foreground(lipgloss.Color("201"))
+				fmt.Print(style.Render() + "\r")
+			default:
+			}
+		},
+	}
+	cloudeventHandlers = append(cloudeventHandlers, handler)
 }
