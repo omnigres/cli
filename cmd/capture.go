@@ -19,7 +19,7 @@ import (
 
 var captureCmd = &cobra.Command{
 	Use:   "capture",
-	Short: "Capture orb schema changes",
+	Short: "Capture a revision",
 	Long:  `By default, will capture all listed orbs`,
 	Run: func(cmd *cobra.Command, args []string) {
 		var cluster orb.OrbCluster
@@ -153,8 +153,6 @@ func captureOrbs(
 }
 
 func init() {
-	rootCmd.AddCommand(captureCmd)
-
 	handler := cloudeventHandler{
 		Callback: func(e *cloudevents.Event) {
 			switch e.Type() {
