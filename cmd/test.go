@@ -69,6 +69,7 @@ func testOrbs(
 	var testTarget, testRunner *sql.DB
 	testRunner, err = cluster.Connect(ctx, "omnigres")
 	if err != nil {
+    log.Error("Could not connect to orb. Ensure the docker container is running, perhaps 'omnigres start' will fix it.")
 		return
 	}
 

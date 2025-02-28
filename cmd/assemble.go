@@ -62,6 +62,7 @@ func assembleOrbs(
 	var db *sql.DB
 	db, err = cluster.Connect(ctx, "omnigres")
 	if err != nil {
+    log.Error("Could not connect to orb. Ensure the docker container is running, perhaps 'omnigres start' will fix it.")
 		return
 	}
 	for _, orbName := range orbs {
