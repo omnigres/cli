@@ -18,6 +18,7 @@ var revisionCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(revisionCmd)
 	revisionCmd.AddCommand(captureCmd)
+	revisionCmd.AddCommand(revisionListCmd)
 
 	handler := cloudeventHandler{
 		Callback: func(e *cloudevents.Event) {
