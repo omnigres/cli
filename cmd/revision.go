@@ -4,9 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/charmbracelet/lipgloss"
-	cloudevents "github.com/cloudevents/sdk-go/v2"
-
 	"github.com/charmbracelet/log"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/spf13/cobra"
 )
 
@@ -19,6 +18,7 @@ func init() {
 	rootCmd.AddCommand(revisionCmd)
 	revisionCmd.AddCommand(captureCmd)
 	revisionCmd.AddCommand(revisionListCmd)
+	revisionCmd.AddCommand(migrateCmd)
 
 	handler := cloudeventHandler{
 		Callback: func(e *cloudevents.Event) {
