@@ -19,8 +19,6 @@ import (
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/api/types/strslice"
-	"github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/errdefs"
 	_ "github.com/lib/pq"
@@ -31,7 +29,6 @@ import (
 )
 
 const default_directory_mount = "/mnt/host"
-const volume_name = "omnigres"
 
 type DockerOrbCluster struct {
 	client             *client.Client
@@ -176,7 +173,6 @@ checkPg:
 }
 
 func (d *DockerOrbCluster) StartWithCurrentUser(ctx context.Context, options OrbClusterStartOptions) (err error) {
-	cli := d.client
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -185,37 +181,6 @@ func (d *DockerOrbCluster) StartWithCurrentUser(ctx context.Context, options Orb
 	currentUser, err = user.Current()
 	if err != nil {
 		log.Fatalf("Could not get current user: %s", err)
-	}
-
-	_, volumeCreationError := cli.VolumeInspect(ctx, volume_name)
-	if volumeCreationError != nil {
-		log.Debug("⛁ Volume for omnigres does not exist, creating one...")
-
-		readyCh := make(chan OrbCluster, 1)
-		err = d.Start(ctx, OrbClusterStartOptions{Runfile: false, Listeners: []OrbStartEventListener{
-			{Ready: func(cluster OrbCluster) {
-				readyCh <- cluster
-			}}}}, nil, nil)
-		if err != nil {
-			log.Fatal(err)
-		}
-		// wait for it to be ready so we ensure the database directory is created
-		<-readyCh
-		d.Stop(ctx)
-
-		chownDatabaseDirectory := strslice.StrSlice{
-			"chown",
-			"-R",
-			fmt.Sprintf("%s:%s", currentUser.Uid, currentUser.Gid),
-			"/var/lib/postgresql/data",
-		}
-		err = d.Start(ctx, OrbClusterStartOptions{Runfile: false}, nil, chownDatabaseDirectory)
-		if err != nil {
-			log.Fatal(err)
-		}
-		d.Stop(ctx)
-		d.currentContainerId = ""
-		log.Debug("⛁ Volume omnigres created")
 	}
 
 	err = d.Start(
@@ -308,11 +273,6 @@ checkContainer:
 		}
 
 		// Bindings
-		omnigresVolume, volErr := cli.VolumeCreate(ctx, volume.CreateOptions{Name: volume_name})
-		if volErr != nil {
-			log.Fatal("Could not create volume")
-		}
-
 		hostconfig := container.HostConfig{
 			AutoRemove: options.AutoRemove,
 			Mounts: []mount.Mount{
@@ -320,11 +280,6 @@ checkContainer:
 					Type:   mount.TypeBind,
 					Source: d.Path,
 					Target: default_directory_mount,
-				},
-				{
-					Type:   mount.TypeVolume,
-					Source: omnigresVolume.Name,
-					Target: "/var/lib/postgresql/data",
 				},
 			},
 			NetworkMode: container.NetworkMode(networkName),
@@ -340,6 +295,10 @@ checkContainer:
 			}
 		}
 		env = append(env, "POSTGRES_HOST_AUTH_METHOD=password")
+		// Allows to prevent problems with initialization scripts failing due to
+		// be unable to chmod /var/lib/postgresql/data (since it already exists
+		// and not owned by user passed in `runAs`)
+		env = append(env, "PGDATA=/var/lib/postgresql/omnigres")
 
 		// Create container
 		log.Debugf("Creating container ...")
@@ -348,7 +307,8 @@ checkContainer:
 		config = &container.Config{Image: imageDigest, Env: env}
 		if runAs != nil {
 			log.Debugf("🪪 Starting cluster with current user id: %s", *runAs)
-			config.User = *runAs
+			// Ensure we have the right user and group
+			config.User = fmt.Sprintf("%s:postgres", *runAs)
 		}
 		if entryPoint != nil {
 			log.Debugf("🛂 Starting cluster with custom entry point: %s", entryPoint)
