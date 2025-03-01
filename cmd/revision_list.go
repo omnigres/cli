@@ -71,8 +71,7 @@ func listRevisions(
 		var rows *sql.Rows
 		rows, err = conn.QueryContext(
 			ctx,
-			`with revs as (select revision, parents, metadata from omni_schema.schema_revisions(omni_vfs.local_fs($1), 'revisions')) 
-                     select revision, not exists (select from revs r1 where r.revision = any(r1.parents)) as top from revs as r order by top`,
+			`select revision from omni_schema.schema_revisions(omni_vfs.local_fs($1), 'revisions')`,
 			fmt.Sprintf("/mnt/host/%s", orbName),
 		)
 		if err != nil {
@@ -80,14 +79,9 @@ func listRevisions(
 			return err
 		}
 		var revision string
-		var top bool
 		for rows.Next() {
-			err = rows.Scan(&revision, &top)
-			if top {
-				fmt.Printf("* %s\n", revision)
-			} else {
-				fmt.Printf("  %s\n", revision)
-			}
+			err = rows.Scan(&revision)
+			fmt.Println(revision)
 		}
 
 	}
