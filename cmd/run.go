@@ -119,7 +119,7 @@ var runCmd = &cobra.Command{
 					},
 				},
 			}
-		err = cluster.Start(ctx, options, nil, nil)
+		err = cluster.StartWithCurrentUser(ctx, options)
 
 		if err != nil {
 			log.Fatal(err)
