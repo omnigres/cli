@@ -5,6 +5,14 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
+	"net"
+	"os"
+	"os/signal"
+	"os/user"
+	"strings"
+	"time"
+
 	"github.com/charmbracelet/log"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -18,12 +26,6 @@ import (
 	"github.com/omnigres/cli/tui"
 	"github.com/spf13/viper"
 	"golang.org/x/term"
-	"io"
-	"net"
-	"os"
-	"os/signal"
-	"strings"
-	"time"
 )
 
 const default_directory_mount = "/mnt/host"
@@ -140,7 +142,8 @@ func (d *DockerOrbCluster) waitUntilClusterIsReady(ctx context.Context, listener
 
 checkPg:
 	for time.Now().Before(deadline) {
-		if c, err := d.Connect(ctx); err == nil {
+		c, err := d.Connect(ctx)
+		if err == nil {
 			if err = c.Ping(); err != nil {
 				continue checkPg
 			}
@@ -169,7 +172,30 @@ checkPg:
 	cancel()
 }
 
-func (d *DockerOrbCluster) Start(ctx context.Context, options OrbClusterStartOptions) (err error) {
+func (d *DockerOrbCluster) StartWithCurrentUser(ctx context.Context, options OrbClusterStartOptions) (err error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Get the current user
+	var currentUser *user.User
+	currentUser, err = user.Current()
+	if err != nil {
+		log.Fatalf("Could not get current user: %s", err)
+	}
+
+	err = d.Start(
+		ctx,
+		options,
+		&currentUser.Uid,
+		nil,
+	)
+	if err != nil {
+		log.Fatal("FAIL")
+	}
+	return
+}
+
+func (d *DockerOrbCluster) Start(ctx context.Context, options OrbClusterStartOptions, runAs *string, entryPoint []string) (err error) {
 	cli := d.client
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -202,6 +228,7 @@ func (d *DockerOrbCluster) Start(ctx context.Context, options OrbClusterStartOpt
 
 checkContainer:
 	if containerId != "" {
+		log.Debugf("Found a container id %s", containerId)
 		var cnt types.ContainerJSON
 		cnt, err = cli.ContainerInspect(ctx, containerId)
 		if errdefs.IsNotFound(err) {
@@ -228,6 +255,7 @@ checkContainer:
 			err = fmt.Errorf("Container's image %s does not match expected %s", image.RepoDigests[0], imageDigest)
 			return
 		}
+
 	} else {
 
 		networkName := "omnigres"
@@ -267,14 +295,38 @@ checkContainer:
 			}
 		}
 		env = append(env, "POSTGRES_HOST_AUTH_METHOD=password")
+		// Allows to prevent problems with initialization scripts failing due to
+		// be unable to chmod /var/lib/postgresql/data (since it already exists
+		// and not owned by user passed in `runAs`)
+		env = append(env, "PGDATA=/var/lib/postgresql/omnigres")
 
 		// Create container
+		log.Debugf("Creating container ...")
 		var containerResponse container.CreateResponse
-		containerResponse, err = cli.ContainerCreate(ctx, &container.Config{Image: imageDigest, Env: env}, &hostconfig, nil, nil, "")
+		var config *container.Config
+		config = &container.Config{Image: imageDigest, Env: env}
+		if runAs != nil {
+			log.Debugf("🪪 Starting cluster with current user id: %s", *runAs)
+			// Ensure we have the right user and group
+			config.User = fmt.Sprintf("%s:postgres", *runAs)
+		}
+		if entryPoint != nil {
+			log.Debugf("🛂 Starting cluster with custom entry point: %s", entryPoint)
+			config.Entrypoint = entryPoint
+		}
+		containerResponse, err = cli.ContainerCreate(
+			ctx,
+			config,
+			&hostconfig,
+			nil,
+			nil,
+			"",
+		)
 		if err != nil {
 			return
 		}
 		containerId = containerResponse.ID
+		d.currentContainerId = containerId
 	}
 
 	if options.Attachment.ShouldAttach {
@@ -343,7 +395,10 @@ checkContainer:
 	}
 
 	// TODO: do this in the background?
-	d.waitUntilClusterIsReady(ctx, options.Listeners, cancel)
+	// wait only when we have Listeners
+	if options.Listeners != nil {
+		d.waitUntilClusterIsReady(ctx, options.Listeners, cancel)
+	}
 
 	if options.Attachment.ShouldAttach {
 		statusCh, errCh := cli.ContainerWait(ctx, containerId, container.WaitConditionNotRunning)

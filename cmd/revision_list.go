@@ -10,9 +10,9 @@ import (
 	"os"
 )
 
-var migrateCmd = &cobra.Command{
-	Use:   "migrate",
-	Short: "Migrate revisions",
+var revisionListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List revisions",
 	Run: func(cmd *cobra.Command, args []string) {
 		var cluster orb.OrbCluster
 		var err error
@@ -33,19 +33,23 @@ var migrateCmd = &cobra.Command{
 		}
 
 		ctx := context.Background()
-		log.Debug("Migrate revisions in orbs", "orbs", orbs)
-		migrateRevisions(
+		log.Debug("List revisions in orbs", "orbs", orbs)
+		listRevisions(
 			ctx,
 			cluster,
+			dbReset,
 			orbs,
+			func(orbName string) string { return orbName },
 		)
 	},
 }
 
-func migrateRevisions(
+func listRevisions(
 	ctx context.Context,
 	cluster orb.OrbCluster,
+	dbReset bool,
 	orbs []string,
+	databaseForOrb func(string) string,
 ) (err error) {
 	var db *sql.DB
 	db, err = cluster.Connect(ctx, "omnigres")
@@ -54,59 +58,32 @@ func migrateRevisions(
 		return
 	}
 	for _, orbName := range orbs {
-		log.Infof("Migrating orb %s", orbName)
 		conn, err := db.Conn(ctx)
-		if err != nil {
-			log.Error(err)
-			return err
-		}
-		err = setupCloudevents(ctx, conn)
-		if err != nil {
-			log.Error(err)
-			return err
-		}
-		defer conn.Close()
-
-		var dbExists bool
-		err = db.QueryRowContext(
-			ctx,
-			`select exists(select from pg_database where datname = $1)`,
-			orbName,
-		).Scan(&dbExists)
 		if err != nil {
 			log.Fatal(err)
 		}
-
-		if !dbExists {
-			_, err = db.ExecContext(ctx, fmt.Sprintf(`create database %q`, orbName))
-			if err != nil {
-				log.Fatal(err)
-			}
+		defer conn.Close()
+		if err != nil {
+			log.Error(err)
+			return err
 		}
 
 		var rows *sql.Rows
 		rows, err = conn.QueryContext(
 			ctx,
-			`select revision, omni_schema.migrate_to_schema_revision(omni_vfs.local_fs($1), 'revisions', revision, $2) is null as success
-from omni_schema.schema_revisions(omni_vfs.local_fs($1), 'revisions')`,
+			`select revision from omni_schema.schema_revisions(omni_vfs.local_fs($1), 'revisions')`,
 			fmt.Sprintf("/mnt/host/%s", orbName),
-			fmt.Sprintf("dbname=%s user=omnigres", orbName),
 		)
 		if err != nil {
 			log.Error(err)
 			return err
 		}
 		var revision string
-		var success bool
 		for rows.Next() {
-			err = rows.Scan(&revision, &success)
-			if success {
-				log.Infof("✅ Applied revision %s", revision)
-			} else {
-				log.Infof("🔴 Failed to apply revision %s", revision)
-			}
+			err = rows.Scan(&revision)
+			fmt.Println(revision)
 		}
-	}
 
-	return nil
+	}
+	return
 }
