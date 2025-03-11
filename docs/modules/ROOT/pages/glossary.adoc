@@ -1,0 +1,5 @@
+[glossary]
+= Glossary
+
+[[orb-term]]
+orb:: a database with Omnigres application

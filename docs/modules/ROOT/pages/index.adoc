@@ -1,0 +1,83 @@
+= Omnigres CLI
+:experimental: true
+
+Omnigres comes with command-line tooling to make development, debugging and deployment experiences seamless.
+
+== Prerequisites
+
+|===
+| Dependency | Description
+
+| **Docker**
+| Required to operate local instances
+|===
+
+== Quick start
+
+You can grab the latest pre-bullt release of CLI on https://github.com/omnigres/cli/releases[GitHub] and install the `omnigres` binary in your `PATH`
+
+=== Initializing a project
+
+Create a directory for your new project and use `omnigres init`:
+
+[,console]
+----
+$ mkdir project
+$ cd project
+$ omnigres init
+----
+
+It will create `omnigres.yaml` and _directory_name/src_ directory for the project.
+
+[TIP]
+====
+If you want to specify a directory instead, you can use the `-w` flag:
+
+[,console]
+----
+$ omigres init
+----
+====
+
+=== Running interactively
+
+In the same directory, use `omnigres to run the project` in foreground:
+
+[,console]
+----
+$ omnigres run
+----
+
+At the end of the startup sequence, it will print a table with
+all endpoint URLs for all the xref:glossary.adoc#orb-term[orbs].
+
+You can terminate it by pressing kbd:[Ctrl-C]. After termination, its data volume will become unavailable.
+
+
+=== Running in the background
+
+To run it in the **background**, use `omnigres start`:
+
+[,console]
+----
+$ omnigres start
+----
+
+This will create `omnigres.run.yaml` file to track the container it's going to be running in.
+
+You can get the endpoint URLs using `omnigres endpoints`
+
+[,console]
+----
+$ omnigres endpoints
+----
+
+To terminate it, run `omnigres stop`:
+
+[,console]
+----
+$ omnigres stop
+----
+
+You can restart it again by using `omnigres start`. It will
+retain the data volume.

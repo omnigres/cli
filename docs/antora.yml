@@ -1,0 +1,5 @@
+name: omnigres-cli
+version: ~
+title: Omnigres CLI
+nav:
+- modules/ROOT/nav.adoc
