@@ -115,7 +115,7 @@ func testOrbs(
 		defer conn.Close()
 
 		// assemble tests in target db
-		orbSource := path.Join(orbName, "test")
+		orbSource := path.Join(orbName, "tests")
 		assembleSchema(ctx, testRunner, orbSource, dbName)
 
 		// run tests
