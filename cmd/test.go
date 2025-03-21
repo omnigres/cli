@@ -88,7 +88,7 @@ func testOrbs(
 		if err != nil {
 			return err
 		}
-		removeIsTemplate := func() {
+		cleanTestRunner := func() {
 			// remove istemplate so we can drop the database
 			_, err = testRunner.ExecContext(
 				ctx,
@@ -98,8 +98,16 @@ func testOrbs(
 			if err != nil {
 				log.Fatal(err)
 			}
+
+			_, err = testRunner.ExecContext(
+				ctx,
+				fmt.Sprintf("drop database \"%s\"", dbName),
+			)
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
-		defer removeIsTemplate()
+		defer cleanTestRunner()
 
 		orbSource := path.Join(orbName, "src")
 		assembleSchema(ctx, testRunner, orbSource, dbName)
