@@ -41,6 +41,21 @@ func (d *DockerOrbCluster) Config() *Config {
 }
 
 func NewDockerOrbCluster() (orb OrbCluster, err error) {
+	log.Debugf(
+		"Creating docker client from env."+
+			"\n %s: %s"+
+			"\n %s: %s"+
+			"\n %s: %s"+
+			"\n %s: %s",
+		client.EnvOverrideHost,
+		os.Getenv(client.EnvOverrideHost),
+		client.EnvOverrideAPIVersion,
+		os.Getenv(client.EnvOverrideAPIVersion),
+		client.EnvOverrideCertPath,
+		os.Getenv(client.EnvOverrideCertPath),
+		client.EnvTLSVerify,
+		os.Getenv(client.EnvTLSVerify),
+	)
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return
