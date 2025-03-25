@@ -10,7 +10,7 @@ Check their [Get Started page](https://www.docker.com/get-started/) to install t
 
 ## Quick start
 
-Download binaries from the [releases page](/releases) for your architecture and place within your **PATH**. Then try calling it without parameters
+Download binaries from the [releases page](https://github.com/omnigres/cli/releases) for your architecture and place within your **PATH**. Then try calling it without parameters
 
 ```sh
 omnigres
