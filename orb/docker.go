@@ -190,7 +190,7 @@ func (d *DockerOrbCluster) StartWithCurrentUser(ctx context.Context, options Orb
 		nil,
 	)
 	if err != nil {
-		log.Fatal("FAIL")
+		log.Fatal("Fail starting Orb", "err", err)
 	}
 	return
 }
