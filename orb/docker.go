@@ -151,6 +151,7 @@ func (d *DockerOrbCluster) runfile() (v *viper.Viper) {
 
 func (d *DockerOrbCluster) waitUntilClusterIsReady(ctx context.Context, listeners []OrbStartEventListener, cancel context.CancelFunc) {
 
+	log.Debug("Waiting for is_omnigres_ready...")
 	deadline := time.Now().Add(1 * time.Minute)
 
 	ready := false
@@ -166,9 +167,11 @@ checkPg:
 			for time.Now().Before(deadline) {
 				if err = c.QueryRowContext(ctx, "select is_omnigres_ready()").Scan(&ready); err != nil {
 					time.Sleep(1 * time.Second)
+					log.Debugf("Error trying is_omnigres_ready: %s", err)
 					continue checkOmnigres
 				}
 				_ = c.Close()
+				log.Debugf("is_omnigres_ready: %t", ready)
 				if ready {
 					for _, listener := range listeners {
 						if listener.Ready != nil {
