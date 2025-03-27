@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"os"
 	"os/signal"
@@ -21,6 +22,7 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/errdefs"
+	"github.com/docker/go-connections/nat"
 	_ "github.com/lib/pq"
 	"github.com/omnigres/cli/internal/fileutils"
 	"github.com/omnigres/cli/tui"
@@ -201,11 +203,16 @@ func (d *DockerOrbCluster) StartWithCurrentUser(ctx context.Context, options Orb
 		log.Fatalf("Could not get current user: %s", err)
 	}
 
+	// Bindings
+	httpBindings := nat.PortMap{
+		"8080/tcp": []nat.PortBinding{{HostPort: "8080", HostIP: "127.0.0.1"}},
+		"8081/tcp": []nat.PortBinding{{HostPort: "8081", HostIP: "127.0.0.1"}},
+	}
 	err = d.Start(
 		ctx,
 		options,
 		&currentUser.Uid,
-		nil,
+		httpBindings,
 	)
 	if err != nil {
 		log.Fatal("Fail starting Orb", "err", err)
@@ -213,7 +220,7 @@ func (d *DockerOrbCluster) StartWithCurrentUser(ctx context.Context, options Orb
 	return
 }
 
-func (d *DockerOrbCluster) Start(ctx context.Context, options OrbClusterStartOptions, runAs *string, entryPoint []string) (err error) {
+func (d *DockerOrbCluster) Start(ctx context.Context, options OrbClusterStartOptions, runAs *string, additionalBindings nat.PortMap) (err error) {
 	cli := d.client
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -291,8 +298,15 @@ checkContainer:
 		}
 
 		// Bindings
+		bindings := nat.PortMap{
+			"5432/tcp": []nat.PortBinding{{HostPort: "6543", HostIP: "127.0.0.1"}},
+		}
+		maps.Copy(bindings, additionalBindings)
+		log.Debug("PORTS: ", "bindings", bindings)
+
 		hostconfig := container.HostConfig{
-			AutoRemove: options.AutoRemove,
+			AutoRemove:   options.AutoRemove,
+			PortBindings: bindings,
 			Mounts: []mount.Mount{
 				{
 					Type:   mount.TypeBind,
@@ -319,18 +333,18 @@ checkContainer:
 		env = append(env, "PGDATA=/var/lib/postgresql/omnigres")
 
 		// Create container
+		exposedPorts := make(map[nat.Port]struct{})
+		for port := range maps.Keys(bindings) {
+			exposedPorts[port] = struct{}{}
+		}
 		log.Debugf("Creating container ...")
 		var containerResponse container.CreateResponse
 		var config *container.Config
-		config = &container.Config{Image: imageDigest, Env: env}
+		config = &container.Config{Image: imageDigest, Env: env, ExposedPorts: exposedPorts}
 		if runAs != nil {
 			log.Debugf("🪪 Starting cluster with current user id: %s", *runAs)
 			// Ensure we have the right user and group
 			config.User = fmt.Sprintf("%s:postgres", *runAs)
-		}
-		if entryPoint != nil {
-			log.Debugf("🛂 Starting cluster with custom entry point: %s", entryPoint)
-			config.Entrypoint = entryPoint
 		}
 		containerResponse, err = cli.ContainerCreate(
 			ctx,
@@ -609,18 +623,20 @@ func (d *DockerOrbCluster) Connect(ctx context.Context, database ...string) (con
 	if err != nil {
 		return
 	}
-	port := 5432
-	conn, err = sql.Open("postgres", fmt.Sprintf("user=omnigres password=omnigres dbname=%s host=%s port=%d sslmode=disable", db, ip, port))
+	port := 6543
+	ip = "127.0.0.1"
+	connectionString := fmt.Sprintf(
+		"user=omnigres password=omnigres dbname=%s host=%s port=%d sslmode=disable",
+		db,
+		ip,
+		port,
+	)
+	conn, err = sql.Open("postgres", connectionString)
 	return
 }
 
 func (d *DockerOrbCluster) Endpoints(ctx context.Context) (endpoints []Endpoint, err error) {
-	var addr string
-	addr, err = d.NetworkIP(ctx)
-	if err != nil {
-		return
-	}
-	ipaddr := net.ParseIP(addr)
+	ipaddr := net.ParseIP("127.0.0.1")
 	endpoints = make([]Endpoint, 0)
 	var conn *sql.DB
 	conn, err = d.Connect(ctx)
@@ -650,7 +666,7 @@ nextDatabase:
 		}
 		defer dbconn.Close()
 		// Add the Postgres service
-		endpoints = append(endpoints, Endpoint{Database: datname, IP: ipaddr, Port: 5432, Protocol: "Postgres"})
+		endpoints = append(endpoints, Endpoint{Database: datname, IP: ipaddr, Port: 6543, Protocol: "Postgres"})
 		// Get the list of HTTP listeners.
 		// TODO: in the future, we expect this to be generialized through omni_service
 		var portRows *sql.Rows
