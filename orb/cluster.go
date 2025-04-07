@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net"
+
+	"github.com/docker/go-connections/nat"
 )
 
 type OrbOptions struct {
@@ -35,7 +37,7 @@ type OrbClusterStartOptions struct {
 
 type OrbCluster interface {
 	Configure(options OrbOptions) error
-	Start(ctx context.Context, options OrbClusterStartOptions, user *string, entryPoint []string) error
+	Start(ctx context.Context, options OrbClusterStartOptions, user *string, additionalBindings nat.PortMap) error
 	StartWithCurrentUser(ctx context.Context, options OrbClusterStartOptions) error
 	Stop(ctx context.Context) error
 	Endpoints(ctx context.Context) ([]Endpoint, error)
