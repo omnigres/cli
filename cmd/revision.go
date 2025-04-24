@@ -19,6 +19,7 @@ func init() {
 	revisionCmd.AddCommand(captureCmd)
 	revisionCmd.AddCommand(revisionListCmd)
 	revisionCmd.AddCommand(migrateCmd)
+	revisionCmd.AddCommand(generateMigrationsCmd)
 
 	handler := cloudeventHandler{
 		Callback: func(e *cloudevents.Event) {
