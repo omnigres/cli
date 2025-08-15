@@ -1,0 +1,4 @@
+{
+  "name": "omni_system",
+  "description": "{{ cookiecutter.name }}"
+}

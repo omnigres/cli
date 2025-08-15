@@ -1,0 +1,19 @@
+[project]
+name = "omnigres"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "click>=8.1.8",
+    "cookiecutter>=2.6.0",
+    "docker>=7.1.0",
+    "inquirerpy>=0.3.4",
+    "jsonrpcserver>=5.0.9",
+    "psutil>=7.0.0",
+    "psycopg[binary,pool]>=3.2.9",
+    "rich>=14.1.0",
+    "rich-click>=1.8.9",
+    "textual[syntax]>=6.1.0",
+    "typer>=0.17.3",
+]

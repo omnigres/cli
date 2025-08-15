@@ -1,0 +1,9 @@
+{
+  "templates": {
+    "default": {
+      "path": "./default",
+      "title": "Default",
+      "description": "Default template"
+    }
+  }
+}
